@@ -1,6 +1,7 @@
 source 'https://rubygems.org'
 
-ruby '>= 3.4.0.dev', '< 3.5'
+# Gemfile
+ruby '~> 3.4'
 
 # Web framework
 gem 'sinatra', '~> 3.2'
@@ -12,7 +13,6 @@ gem 'rack-cors', '~> 2.0'
 
 # HTTP client for API calls
 gem 'httparty', '~> 0.21'
-gem 'http', '~> 5.3'
 
 # JSON handling
 gem 'json', '~> 2.7'

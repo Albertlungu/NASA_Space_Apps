@@ -140,8 +140,6 @@ GEM
     uri (1.0.3)
 
 PLATFORMS
-  arm64-darwin-23
-  arm64-darwin-24
   x64-mingw-ucrt
 
 DEPENDENCIES
@@ -165,7 +163,7 @@ DEPENDENCIES
   twilio-ruby (~> 7.3)
 
 RUBY VERSION
-   ruby 3.4.0.dev
+   ruby 3.4.6p54
 
 BUNDLED WITH
    2.7.2
