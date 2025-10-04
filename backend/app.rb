@@ -124,6 +124,18 @@ helpers do
     linear_aqi(concentration, breakpoints)
   end
 
+  def calculate_pm10_aqi(concentration)
+    breakpoints = [
+      [0, 54, 0, 50],
+      [55, 154, 51, 100],
+      [155, 254, 101, 150],
+      [255, 354, 151, 200],
+      [355, 424, 201, 300],
+      [425, 604, 301, 500]
+    ]
+    linear_aqi(concentration, breakpoints)
+  end
+
   def calculate_no2_aqi(concentration)
     # NO2 in ppb
     breakpoints = [
@@ -133,6 +145,44 @@ helpers do
       [361, 649, 151, 200],
       [650, 1249, 201, 300],
       [1250, 2049, 301, 500]
+    ]
+    linear_aqi(concentration, breakpoints)
+  end
+
+  def calculate_o3_aqi(concentration)
+    # O3 in ppb (8-hour average)
+    breakpoints = [
+      [0, 54, 0, 50],
+      [55, 70, 51, 100],
+      [71, 85, 101, 150],
+      [86, 105, 151, 200],
+      [106, 200, 201, 300]
+    ]
+    linear_aqi(concentration, breakpoints)
+  end
+
+  def calculate_so2_aqi(concentration)
+    # SO2 in ppb
+    breakpoints = [
+      [0, 35, 0, 50],
+      [36, 75, 51, 100],
+      [76, 185, 101, 150],
+      [186, 304, 151, 200],
+      [305, 604, 201, 300],
+      [605, 1004, 301, 500]
+    ]
+    linear_aqi(concentration, breakpoints)
+  end
+
+  def calculate_co_aqi(concentration)
+    # CO in ppm
+    breakpoints = [
+      [0.0, 4.4, 0, 50],
+      [4.5, 9.4, 51, 100],
+      [9.5, 12.4, 101, 150],
+      [12.5, 15.4, 151, 200],
+      [15.5, 30.4, 201, 300],
+      [30.5, 50.4, 301, 500]
     ]
     linear_aqi(concentration, breakpoints)
   end
@@ -194,15 +244,17 @@ namespace '/api' do
     begin
       # Fetch from OpenAQ
       url = "https://api.openaq.org/v3/locations"
-      query_params = {
-        limit: limit,
-        radius: radius,
-        coordinates: "#{lat},#{lon}"
-      }
       
-      response = HTTP.headers("X-API-Key" => OPENAQ_KEY)
-                     .get(url, params: query_params)
-      data = JSON.parse(response.to_s)
+      response = HTTParty.get(url,
+        headers: { "X-API-Key" => OPENAQ_KEY },
+        query: {
+          limit: limit,
+          radius: radius,
+          coordinates: "#{lat},#{lon}"
+        }
+      )
+      
+      data = response.parsed_response
 
       # Get latest measurements for each location
       locations = data['results']&.map do |location|
@@ -258,15 +310,17 @@ namespace '/api' do
 
       # Use the latest endpoint which works with coordinates
       url = "https://api.openaq.org/v3/parameters/#{param_id}/latest"
-      query_params = {
-        limit: limit,
-        radius: radius,
-        coordinates: "#{lon},#{lat}" # Note: OpenAQ uses lon,lat order
-      }
-
-      response = HTTP.headers("X-API-Key" => OPENAQ_KEY)
-                     .get(url, params: query_params)
-      data = JSON.parse(response.to_s)
+      
+      response = HTTParty.get(url,
+        headers: { "X-API-Key" => OPENAQ_KEY },
+        query: {
+          limit: limit,
+          radius: radius,
+          coordinates: "#{lon},#{lat}" # Note: OpenAQ uses lon,lat order
+        }
+      )
+      
+      data = response.parsed_response
 
       measurements = data['results']&.map do |m|
         value = m['value']
@@ -335,15 +389,17 @@ namespace '/api' do
         next unless param_id
         
         url = "https://api.openaq.org/v3/parameters/#{param_id}/latest"
-        query_params = {
-          limit: 10,
-          radius: 50000,
-          coordinates: "#{lon},#{lat}" # lon,lat order for OpenAQ
-        }
-
-        response = HTTP.headers("X-API-Key" => OPENAQ_KEY)
-                       .get(url, params: query_params)
-        data = JSON.parse(response.to_s)
+        
+        response = HTTParty.get(url,
+          headers: { "X-API-Key" => OPENAQ_KEY },
+          query: {
+            limit: 10,
+            radius: 50000,
+            coordinates: "#{lon},#{lat}" # lon,lat order for OpenAQ
+          }
+        )
+        
+        data = response.parsed_response
         
         if data['results'] && data['results'].any?
           values = data['results'].map { |r| r.dig('summary', 'mean') || r['value'] }.compact
@@ -432,14 +488,17 @@ namespace '/api' do
 
     begin
       url = "https://api.openweathermap.org/data/2.5/weather"
-      response = HTTP.get(url, params: {
-        lat: lat,
-        lon: lon,
-        appid: WEATHER_API_KEY,
-        units: 'metric'
-      })
       
-      data = JSON.parse(response.to_s)
+      response = HTTParty.get(url,
+        query: {
+          lat: lat,
+          lon: lon,
+          appid: WEATHER_API_KEY,
+          units: 'metric'
+        }
+      )
+      
+      data = response.parsed_response
       
       json({
         status: 'ok',
