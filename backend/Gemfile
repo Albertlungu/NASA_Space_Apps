@@ -20,6 +20,8 @@ gem 'json', '~> 2.7'
 gem 'dotenv', '~> 3.1'
 
 # Database
+gem "activerecord" , '~> 7.1'
+gem 'sinatra-activerecord', '~> 2.0'
 gem 'sqlite3', '~> 2.4'
 
 # Background jobs (optional)
