@@ -1,0 +1,172 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
+All colors MUST be HSL.
+*/
+
+@layer base {
+  :root {
+    --background: 210 20% 98%;
+    --foreground: 215 25% 15%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 215 25% 15%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 215 25% 15%;
+
+    --primary: 189 85% 35%;
+    --primary-foreground: 0 0% 100%;
+    --primary-glow: 189 85% 55%;
+
+    --secondary: 142 76% 45%;
+    --secondary-foreground: 0 0% 100%;
+
+    --muted: 210 20% 94%;
+    --muted-foreground: 215 15% 45%;
+
+    --accent: 189 85% 92%;
+    --accent-foreground: 189 85% 35%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 100%;
+
+    --border: 214 20% 88%;
+    --input: 214 20% 92%;
+    --ring: 189 85% 35%;
+
+    --radius: 0.75rem;
+
+    /* Air Quality Colors */
+    --aqi-good: 142 76% 45%;
+    --aqi-moderate: 48 96% 53%;
+    --aqi-sensitive: 38 92% 50%;
+    --aqi-unhealthy: 0 84% 60%;
+    --aqi-very-unhealthy: 282 44% 47%;
+    --aqi-hazardous: 350 70% 30%;
+
+    /* Gradients */
+    --gradient-hero: linear-gradient(135deg, hsl(189 85% 35%), hsl(189 85% 55%));
+    --gradient-card: linear-gradient(180deg, hsl(0 0% 100%), hsl(210 20% 98%));
+    --gradient-aqi: linear-gradient(90deg, hsl(142 76% 45%), hsl(48 96% 53%), hsl(38 92% 50%), hsl(0 84% 60%), hsl(282 44% 47%), hsl(350 70% 30%));
+
+    /* Shadows */
+    --shadow-sm: 0 2px 4px hsl(189 85% 35% / 0.08);
+    --shadow-md: 0 4px 12px hsl(189 85% 35% / 0.12);
+    --shadow-lg: 0 8px 24px hsl(189 85% 35% / 0.16);
+    --shadow-glow: 0 0 40px hsl(189 85% 55% / 0.3);
+
+    /* Animations */
+    --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-bounce: all 0.5s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+
+    --radius: 0.75rem;
+
+    --sidebar-background: 0 0% 98%;
+
+    --sidebar-foreground: 240 5.3% 26.1%;
+
+    --sidebar-primary: 240 5.9% 10%;
+
+    --sidebar-primary-foreground: 0 0% 98%;
+
+    --sidebar-accent: 240 4.8% 95.9%;
+
+    --sidebar-accent-foreground: 240 5.9% 10%;
+
+    --sidebar-border: 220 13% 91%;
+
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+
+  .dark {
+    --background: 215 28% 10%;
+    --foreground: 210 20% 98%;
+
+    --card: 215 25% 14%;
+    --card-foreground: 210 20% 98%;
+
+    --popover: 215 25% 14%;
+    --popover-foreground: 210 20% 98%;
+
+    --primary: 189 85% 45%;
+    --primary-foreground: 0 0% 100%;
+    --primary-glow: 189 85% 65%;
+
+    --secondary: 142 76% 50%;
+    --secondary-foreground: 0 0% 100%;
+
+    --muted: 215 20% 18%;
+    --muted-foreground: 215 15% 60%;
+
+    --accent: 189 85% 20%;
+    --accent-foreground: 189 85% 90%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 100%;
+
+    --border: 215 20% 20%;
+    --input: 215 20% 18%;
+    --ring: 189 85% 45%;
+
+    --shadow-sm: 0 2px 4px hsl(0 0% 0% / 0.3);
+    --shadow-md: 0 4px 12px hsl(0 0% 0% / 0.4);
+    --shadow-lg: 0 8px 24px hsl(0 0% 0% / 0.5);
+    --shadow-glow: 0 0 40px hsl(189 85% 65% / 0.4);
+    --sidebar-background: 240 5.9% 10%;
+    --sidebar-foreground: 240 4.8% 95.9%;
+    --sidebar-primary: 224.3 76.3% 48%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 3.7% 15.9%;
+    --sidebar-accent-foreground: 240 4.8% 95.9%;
+    --sidebar-border: 240 3.7% 15.9%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-bold tracking-tight;
+  }
+}
+
+@layer utilities {
+  .animate-gradient {
+    background-size: 200% 200%;
+    animation: gradient 8s ease infinite;
+  }
+
+  @keyframes gradient {
+    0%, 100% {
+      background-position: 0% 50%;
+    }
+    50% {
+      background-position: 100% 50%;
+    }
+  }
+
+  .glass-effect {
+    @apply backdrop-blur-xl bg-white/80 dark:bg-card/80 border border-white/20;
+  }
+
+  .shadow-glow {
+    box-shadow: var(--shadow-glow);
+  }
+}
