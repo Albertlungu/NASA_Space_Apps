@@ -185,10 +185,6 @@ const MapView = () => {
               <Satellite className="w-4 h-4 mr-2" />
               TEMPO Overlay
             </Button>
-            <Button variant="outline" size="sm">
-              <Layers className="w-4 h-4 mr-2" />
-              Layers
-            </Button>
           </div>
 
           <div className="flex items-center gap-2">
