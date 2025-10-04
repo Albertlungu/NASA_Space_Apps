@@ -60,6 +60,39 @@ export interface UserExposure {
   pollutants: Record<string, number>;
 }
 
+export interface PatternInsight {
+  type: string;
+  title: string;
+  insight: string;
+  detail: string;
+  severity: string;
+  actionable: boolean;
+  action?: string;
+}
+
+export interface PatternAnalysis {
+  insights: PatternInsight[];
+  patterns: {
+    hourly: Record<number, number>;
+    daily: Record<string, number>;
+    weekly: Record<number, number>;
+  };
+  anomalies: Array<{
+    timestamp: string;
+    aqi: number;
+    deviation: number;
+    type: string;
+  }>;
+  predictions: Array<{
+    hours_ahead: number;
+    hour: number;
+    predicted_aqi: number;
+    confidence: number;
+  }>;
+  summary: string;
+  confidence: number;
+}
+
 // API Client
 export const api = {
   // Air Quality Endpoints
@@ -111,6 +144,24 @@ export const api = {
   async getWeather(lat: number, lon: number) {
     const response = await fetch(
       `${API_BASE_URL}/api/weather?lat=${lat}&lon=${lon}`
+    );
+    return response.json();
+  },
+
+  async getPatternInsights(
+    pollutant: string,
+    lat: number,
+    lon: number,
+    days = 7
+  ): Promise<{
+    status: string;
+    pollutant: string;
+    days: number;
+    data_points: number;
+    analysis: PatternAnalysis;
+  }> {
+    const response = await fetch(
+      `${API_BASE_URL}/api/pattern-insights?pollutant=${pollutant}&lat=${lat}&lon=${lon}&days=${days}`
     );
     return response.json();
   },

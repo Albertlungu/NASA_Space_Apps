@@ -89,3 +89,22 @@ export function useTempoData(lat: number | undefined, lon: number | undefined) {
     staleTime: 10 * 60 * 1000,
   });
 }
+
+// Hook for AI pattern insights
+export function usePatternInsights(
+  lat: number | undefined,
+  lon: number | undefined,
+  pollutant: string,
+  days = 7
+) {
+  return useQuery({
+    queryKey: ['pattern-insights', lat, lon, pollutant, days],
+    queryFn: () => {
+      if (!lat || !lon) throw new Error('Location required');
+      return api.getPatternInsights(pollutant, lat, lon, days);
+    },
+    enabled: !!lat && !!lon,
+    staleTime: 30 * 60 * 1000, // Cache for 30 minutes
+    retry: 1,
+  });
+}

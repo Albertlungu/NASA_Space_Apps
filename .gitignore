@@ -7,7 +7,9 @@
 # Ignore all .env files and the specific local files you created
 .env
 .env.local
-backend/ .env
+.env.*
+backend/.env
+backend/.env.local
 *.local
 
 # Logs

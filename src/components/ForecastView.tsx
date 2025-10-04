@@ -1,8 +1,9 @@
 import { Card } from "@/components/ui/card";
 import { TrendingUp, TrendingDown, Minus, Clock, Loader2 } from "lucide-react";
 import { useGeolocation } from "@/hooks/useGeolocation";
-import { useHistoricalData, useAirQuality } from "@/hooks/useAirQuality";
+import { useHistoricalData, useAirQuality, usePatternInsights } from "@/hooks/useAirQuality";
 import { useState, useEffect } from "react";
+import PatternInsights from "@/components/PatternInsights";
 
 interface ForecastData {
   time: string;
@@ -15,14 +16,20 @@ const ForecastView = () => {
   const { location } = useGeolocation();
   const { data: historicalData } = useHistoricalData(location?.lat, location?.lon, 'pm25', 7);
   const { data: currentData } = useAirQuality(location?.lat, location?.lon, 'pm25');
+  const { data: patternData, isLoading: insightsLoading } = usePatternInsights(location?.lat, location?.lon, 'pm25', 7);
   const [forecastData, setForecastData] = useState<ForecastData[]>([]);
 
   useEffect(() => {
-    if (!historicalData?.data || !currentData?.results?.[0]) return;
+    if (!historicalData?.data || historicalData.data.length === 0) return;
 
     // Generate 24-hour forecast using historical patterns and ML predictions
     const historical = historicalData.data;
-    const currentAQI = currentData.results[0].aqi;
+    
+    // Use current data if available, otherwise use most recent historical data
+    const currentAQI = currentData?.results?.[0]?.aqi || 
+                       historical[historical.length - 1]?.aqi || 
+                       70; // fallback to moderate AQI
+    
     const now = new Date();
     
     // Calculate hourly patterns from historical data
@@ -192,6 +199,22 @@ const ForecastView = () => {
         </>
         )}
       </Card>
+
+      {/* AI Pattern Insights Section */}
+      {insightsLoading ? (
+        <Card className="p-6">
+          <div className="flex items-center justify-center py-8">
+            <Loader2 className="w-6 h-6 animate-spin text-primary" />
+            <span className="ml-3 text-muted-foreground">Analyzing pollution patterns...</span>
+          </div>
+        </Card>
+      ) : patternData?.analysis ? (
+        <PatternInsights
+          insights={patternData.analysis.insights}
+          summary={patternData.analysis.summary}
+          confidence={patternData.analysis.confidence}
+        />
+      ) : null}
     </div>
   );
 };
