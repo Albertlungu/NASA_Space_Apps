@@ -2,23 +2,14 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { MapPin, Layers, Satellite, Loader2 } from "lucide-react";
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useGeolocation } from "@/hooks/useGeolocation";
 import { useAirQuality, useTempoData } from "@/hooks/useAirQuality";
 import { getAQIColor, getAQILevel } from "@/lib/api";
-import { GoogleMap, LoadScript, Marker, InfoWindow } from '@react-google-maps/api';
+import Map, { Marker, Popup, NavigationControl, ScaleControl } from 'react-map-gl';
+import 'mapbox-gl/dist/mapbox-gl.css';
 
-const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || 'AIzaSyBFw0Qbyq9zTFTd-tUY6dZWTgaQzuU17R8';
-
-const mapContainerStyle = {
-  width: '100%',
-  height: '600px'
-};
-
-const center = {
-  lat: 39.8283,
-  lng: -98.5795
-};
+const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN || 'pk.eyJ1IjoiYWxiZXJ0bHVuZ3UiLCJhIjoiY20zZmJqODRzMDFhcjJqcHBnMGRyaWFvbCJ9.1234567890abcdefghijklmnop';
 
 const MapView = () => {
   const [opacity, setOpacity] = useState([70]);
@@ -120,12 +111,19 @@ const MapView = () => {
     color: getAQIColor(loc.aqi)
   })), [locations]);
   
+  // Mapbox viewport state
+  const [viewState, setViewState] = useState({
+    longitude: -98.5795,
+    latitude: 39.8283,
+    zoom: 2
+  });
+
   // Handle map click
-  const handleMapClick = (e: google.maps.MapMouseEvent) => {
-    if (e.latLng) {
+  const handleMapClick = (event: any) => {
+    if (event.lngLat) {
       setClickedLocation({
-        lat: e.latLng.lat(),
-        lng: e.latLng.lng()
+        lat: event.lngLat.lat,
+        lng: event.lngLat.lng
       });
       setSelectedMarker(-1); // Special marker for clicked location
     }
@@ -202,129 +200,137 @@ const MapView = () => {
 
         </div>
 
-        {/* Google Maps Integration */}
+        {/* Mapbox Integration */}
         <div className="relative w-full h-[600px] rounded-xl overflow-hidden">
-          <LoadScript googleMapsApiKey={GOOGLE_MAPS_API_KEY}>
-            <GoogleMap
-              mapContainerStyle={mapContainerStyle}
-              center={center}
-              zoom={2}
-              onLoad={() => setMapLoaded(true)}
-              onClick={handleMapClick}
-              options={{
-                mapTypeId: showSatellite ? 'hybrid' : 'roadmap',
-                styles: [
-                  {
-                    featureType: 'all',
-                    elementType: 'labels',
-                    stylers: [{ visibility: 'on' }]
-                  }
-                ]
-              }}
-            >
-              {mapLoaded && locationsWithColors.map((loc, idx) => (
-                <Marker
-                  key={idx}
-                  position={{ lat: loc.lat, lng: loc.lng }}
-                  onClick={() => setSelectedMarker(idx)}
-                  icon={{
-                    path: window.google.maps.SymbolPath.CIRCLE,
-                    fillColor: loc.color,
-                    fillOpacity: 0.9,
-                    strokeColor: '#ffffff',
-                    strokeWeight: 2,
-                    scale: 15,
-                  }}
-                  label={{
-                    text: loc.aqi.toString(),
-                    color: '#ffffff',
-                    fontSize: '12px',
-                    fontWeight: 'bold'
-                  }}
+          <Map
+            {...viewState}
+            onMove={evt => setViewState(evt.viewState)}
+            onClick={handleMapClick}
+            mapStyle={showSatellite ? "mapbox://styles/mapbox/satellite-streets-v12" : "mapbox://styles/mapbox/streets-v12"}
+            mapboxAccessToken={MAPBOX_TOKEN}
+            style={{ width: '100%', height: '100%' }}
+          >
+            <NavigationControl position="top-right" />
+            <ScaleControl />
+
+            {/* City markers */}
+            {locationsWithColors.map((loc, idx) => (
+              <Marker
+                key={idx}
+                longitude={loc.lng}
+                latitude={loc.lat}
+                anchor="center"
+                onClick={(e) => {
+                  e.originalEvent.stopPropagation();
+                  setSelectedMarker(idx);
+                }}
+              >
+                <div 
+                  className="cursor-pointer flex items-center justify-center w-10 h-10 rounded-full border-2 border-white shadow-lg hover:scale-110 transition-transform"
+                  style={{ backgroundColor: loc.color }}
                 >
-                  {selectedMarker === idx && (
-                    <InfoWindow onCloseClick={() => setSelectedMarker(null)}>
-                      <div className="p-2">
-                        <h3 className="font-semibold text-sm mb-1">{loc.name}</h3>
-                        <p className="text-xs text-gray-600">AQI: {loc.aqi}</p>
-                        <p className="text-xs text-gray-600">{loc.value.toFixed(1)} {loc.unit}</p>
-                        <p className="text-xs font-medium mt-1" style={{ color: loc.color }}>
-                          {getAQILevel(loc.aqi)}
-                        </p>
-                      </div>
-                    </InfoWindow>
-                  )}
-                </Marker>
-              ))}
-              
-              {/* Clicked location marker */}
-              {clickedLocation && mapLoaded && (
-                <Marker
-                  position={clickedLocation}
-                  onClick={() => setSelectedMarker(-1)}
-                  icon={{
-                    path: window.google.maps.SymbolPath.CIRCLE,
-                    fillColor: clickedData?.results?.[0]?.aqi 
+                  <span className="text-white text-xs font-bold">{loc.aqi}</span>
+                </div>
+              </Marker>
+            ))}
+
+            {/* Clicked location marker */}
+            {clickedLocation && (
+              <Marker
+                longitude={clickedLocation.lng}
+                latitude={clickedLocation.lat}
+                anchor="center"
+                onClick={(e) => {
+                  e.originalEvent.stopPropagation();
+                  setSelectedMarker(-1);
+                }}
+              >
+                <div 
+                  className="cursor-pointer flex items-center justify-center w-12 h-12 rounded-full border-4 border-white shadow-xl hover:scale-110 transition-transform"
+                  style={{ 
+                    backgroundColor: clickedData?.results?.[0]?.aqi 
                       ? getAQIColor(clickedData.results[0].aqi) 
-                      : '#666666',
-                    fillOpacity: 0.9,
-                    strokeColor: '#ffffff',
-                    strokeWeight: 3,
-                    scale: 18,
+                      : '#666666'
                   }}
-                  label={
-                    clickedData?.results?.[0]?.aqi 
-                      ? {
-                          text: clickedData.results[0].aqi.toString(),
-                          color: '#ffffff',
-                          fontSize: '12px',
-                          fontWeight: 'bold'
-                        }
-                      : undefined
-                  }
                 >
-                  {selectedMarker === -1 && (
-                    <InfoWindow onCloseClick={() => {
-                      setSelectedMarker(null);
-                      setClickedLocation(null);
-                    }}>
-                      <div className="p-2">
-                        <h3 className="font-semibold text-sm mb-1">
-                          Custom Location
-                        </h3>
-                        <p className="text-xs text-gray-600">
-                          {clickedLocation.lat.toFixed(4)}, {clickedLocation.lng.toFixed(4)}
-                        </p>
-                        {clickedData?.results?.[0] ? (
-                          <>
-                            <p className="text-xs text-gray-600">
-                              AQI: {clickedData.results[0].aqi}
-                            </p>
-                            <p className="text-xs text-gray-600">
-                              {clickedData.results[0].value?.toFixed(1)} {clickedData.results[0].unit}
-                            </p>
-                            <p className="text-xs font-medium mt-1" 
-                               style={{ color: getAQIColor(clickedData.results[0].aqi) }}>
-                              {getAQILevel(clickedData.results[0].aqi)}
-                            </p>
-                          </>
-                        ) : (
-                          <p className="text-xs text-gray-500 mt-1">Loading data...</p>
-                        )}
-                      </div>
-                    </InfoWindow>
+                  {clickedData?.results?.[0]?.aqi && (
+                    <span className="text-white text-xs font-bold">
+                      {clickedData.results[0].aqi}
+                    </span>
                   )}
-                </Marker>
-              )}
-            </GoogleMap>
-          </LoadScript>
-          
-          {!mapLoaded && (
-            <div className="absolute inset-0 flex items-center justify-center bg-muted/50">
-              <Loader2 className="w-8 h-8 animate-spin text-primary" />
-              <span className="ml-3 text-muted-foreground">Loading Google Maps...</span>
-            </div>
-          )}
+                </div>
+              </Marker>
+            )}
+
+            {/* Popup for selected city */}
+            {selectedMarker !== null && selectedMarker >= 0 && (
+              <Popup
+                longitude={locationsWithColors[selectedMarker].lng}
+                latitude={locationsWithColors[selectedMarker].lat}
+                anchor="bottom"
+                onClose={() => setSelectedMarker(null)}
+                closeButton={true}
+                closeOnClick={false}
+              >
+                <div className="p-2">
+                  <h3 className="font-semibold text-sm mb-1">
+                    {locationsWithColors[selectedMarker].name}
+                  </h3>
+                  <p className="text-xs text-gray-600">
+                    {locationsWithColors[selectedMarker].country}
+                  </p>
+                  <p className="text-xs text-gray-600">
+                    AQI: {locationsWithColors[selectedMarker].aqi}
+                  </p>
+                  <p className="text-xs text-gray-600">
+                    {locationsWithColors[selectedMarker].value.toFixed(1)} {locationsWithColors[selectedMarker].unit}
+                  </p>
+                  <p className="text-xs font-medium mt-1" 
+                     style={{ color: locationsWithColors[selectedMarker].color }}>
+                    {getAQILevel(locationsWithColors[selectedMarker].aqi)}
+                  </p>
+                </div>
+              </Popup>
+            )}
+
+            {/* Popup for clicked location */}
+            {selectedMarker === -1 && clickedLocation && (
+              <Popup
+                longitude={clickedLocation.lng}
+                latitude={clickedLocation.lat}
+                anchor="bottom"
+                onClose={() => {
+                  setSelectedMarker(null);
+                  setClickedLocation(null);
+                }}
+                closeButton={true}
+                closeOnClick={false}
+              >
+                <div className="p-2">
+                  <h3 className="font-semibold text-sm mb-1">Custom Location</h3>
+                  <p className="text-xs text-gray-600">
+                    {clickedLocation.lat.toFixed(4)}, {clickedLocation.lng.toFixed(4)}
+                  </p>
+                  {clickedData?.results?.[0] ? (
+                    <>
+                      <p className="text-xs text-gray-600">
+                        AQI: {clickedData.results[0].aqi}
+                      </p>
+                      <p className="text-xs text-gray-600">
+                        {clickedData.results[0].value?.toFixed(1)} {clickedData.results[0].unit}
+                      </p>
+                      <p className="text-xs font-medium mt-1" 
+                         style={{ color: getAQIColor(clickedData.results[0].aqi) }}>
+                        {getAQILevel(clickedData.results[0].aqi)}
+                      </p>
+                    </>
+                  ) : (
+                    <p className="text-xs text-gray-500 mt-1">Loading data...</p>
+                  )}
+                </div>
+              </Popup>
+            )}
+          </Map>
         </div>
 
         {/* Legend */}

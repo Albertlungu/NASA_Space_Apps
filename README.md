@@ -323,8 +323,8 @@ REDIS_URL=redis://localhost:6379/0
 # Backend API URL
 VITE_API_URL=http://localhost:4567
 
-# Google Maps API Key (Optional - for map feature)
-VITE_GOOGLE_MAPS_API_KEY=your_google_maps_key
+# Mapbox API Token (for map feature)
+VITE_MAPBOX_TOKEN=your_mapbox_token
 ```
 
 ### Getting API Keys
@@ -332,7 +332,7 @@ VITE_GOOGLE_MAPS_API_KEY=your_google_maps_key
 1. **OpenAQ API**: https://openaq.org/
 2. **NASA Earthdata**: https://urs.earthdata.nasa.gov/
 3. **OpenWeatherMap**: https://openweathermap.org/api
-4. **Google Maps**: https://console.cloud.google.com/
+4. **Mapbox**: https://account.mapbox.com/ (Free tier: 50,000 map loads/month)
 
 ---
 
