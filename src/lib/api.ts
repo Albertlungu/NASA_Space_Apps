@@ -141,6 +141,13 @@ export const api = {
     return response.json();
   },
 
+  async getTemperatureGrid(bounds: { north: number; south: number; east: number; west: number }) {
+    const response = await fetch(
+      `${API_BASE_URL}/api/weather/grid?north=${bounds.north}&south=${bounds.south}&east=${bounds.east}&west=${bounds.west}`
+    );
+    return response.json();
+  },
+
   async getWeather(lat: number, lon: number) {
     const response = await fetch(
       `${API_BASE_URL}/api/weather?lat=${lat}&lon=${lon}`

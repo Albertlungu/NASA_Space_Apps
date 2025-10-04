@@ -43,6 +43,13 @@ const MapView = () => {
   const mapRef = useRef<any>(null);
   const [mapError, setMapError] = useState<string | null>(null);
   const [isMapLoading, setIsMapLoading] = useState(true);
+  const [temperatureData, setTemperatureData] = useState<any[]>([]);
+  // Get yesterday's date for NASA GIBS (today's data not available yet)
+  const gibsDate = useMemo(() => {
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    return yesterday.toISOString().split('T')[0];
+  }, []);
   
   const { location } = useGeolocation();
   
@@ -274,26 +281,41 @@ const MapView = () => {
     return () => clearTimeout(timer);
   }, [viewMode]);
 
-  // Apply fog effect in 3D mode after map loads
+
+  // Fetch temperature grid data when temperature overlay is active
   useEffect(() => {
-    if (!mapRef.current || viewMode !== '3d') return;
+    if (overlayType !== 'temperature' || !mapRef.current) return;
     
-    try {
-      const map = mapRef.current.getMap();
-      if (map && map.loaded()) {
-        map.setFog({
-          range: [0.5, 10],
-          color: '#1a1f3a',
-          'horizon-blend': 0.3,
-          'high-color': '#1e3a8a',
-          'space-color': '#0a0e1a',
-          'star-intensity': 0.25
+    const fetchTemperatureData = async () => {
+      try {
+        const map = mapRef.current.getMap();
+        if (!map || !map.loaded()) return;
+        
+        const bounds = map.getBounds();
+        
+        const data = await api.getTemperatureGrid({
+          north: bounds.getNorth(),
+          south: bounds.getSouth(),
+          east: bounds.getEast(),
+          west: bounds.getWest()
         });
+        
+        if (data.status === 'ok' && data.grid) {
+          setTemperatureData(data.grid);
+        }
+      } catch (error) {
+        // Silently fail if backend not ready
+        console.log('Temperature data not available yet');
       }
-    } catch (error) {
-      console.error('Error setting fog:', error);
-    }
-  }, [viewMode]);
+    };
+    
+    // Wait for map to be ready, then fetch once
+    const timer = setTimeout(fetchTemperatureData, 1500);
+    
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [overlayType]);
 
   // Handle map click
   const handleMapClick = (event: any) => {
@@ -307,6 +329,25 @@ const MapView = () => {
   };
 
   const currentTime = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+
+  // Create GeoJSON from temperature data
+  const temperatureGeoJSON = useMemo(() => {
+    return {
+      type: 'FeatureCollection' as const,
+      features: temperatureData.map((point: any) => ({
+        type: 'Feature' as const,
+        geometry: {
+          type: 'Point' as const,
+          coordinates: [point.lon, point.lat]
+        },
+        properties: {
+          temperature: point.temperature,
+          // Normalize temperature for heatmap weight (-20°C to 45°C range)
+          weight: Math.max(0, Math.min(1, (point.temperature + 20) / 65))
+        }
+      }))
+    };
+  }, [temperatureData]);
 
   // Check if MapBox token is configured
   if (!MAPBOX_TOKEN) {
@@ -448,13 +489,13 @@ const MapView = () => {
             key={viewMode}
             ref={mapRef}
             {...viewState}
-            projection={viewMode === '3d' ? 'globe' : 'mercator'}
+            projection={(viewMode === '3d' ? { name: 'globe' } : { name: 'mercator' }) as any}
             onMove={evt => setViewState(evt.viewState)}
             onClick={handleMapClick}
             onLoad={() => {
               console.log('Map loaded in mode:', viewMode);
               setIsMapLoading(false);
-              // Apply fog only in 3D mode
+              // Apply fog only for 3D
               if (mapRef.current && viewMode === '3d') {
                 const map = mapRef.current.getMap();
                 map.setFog({
@@ -481,34 +522,30 @@ const MapView = () => {
             
             {/* Overlay layers - Pollution Heat map */}
             {overlayType === 'pollution' && heatmapData.features.length > 0 && (
-              <Source type="geojson" data={heatmapData}>
+              <Source id="pollution-source" type="geojson" data={heatmapData}>
                 <Layer {...heatmapLayer} />
                 <Layer {...circleLayer} />
               </Source>
             )}
             
-            {/* Temperature Overlay - simulated with color gradient */}
-            {overlayType === 'temperature' && heatmapData.features.length > 0 && (
-              <Source type="geojson" data={heatmapData}>
+            {/* Temperature Overlay - OpenWeatherMap temperature tiles */}
+            {overlayType === 'temperature' && (
+              <Source
+                id="temperature-source"
+                type="raster"
+                tiles={[
+                  `https://tile.openweathermap.org/map/temp_new/{z}/{x}/{y}.png?appid=c8e28a232f71b820576f88f0599c8a09`
+                ]}
+                tileSize={256}
+                minzoom={0}
+                maxzoom={10}
+              >
                 <Layer
-                  id="temperature-heatmap"
-                  type="heatmap"
+                  id="temperature-layer"
+                  type="raster"
                   paint={{
-                    'heatmap-weight': 1,
-                    'heatmap-intensity': ['interpolate', ['linear'], ['zoom'], 0, 1, 9, 3] as any,
-                    'heatmap-color': [
-                      'interpolate',
-                      ['linear'],
-                      ['heatmap-density'],
-                      0, 'rgba(0, 0, 255, 0)',
-                      0.2, 'rgb(0, 100, 255)',
-                      0.4, 'rgb(0, 200, 255)',
-                      0.6, 'rgb(255, 255, 0)',
-                      0.8, 'rgb(255, 150, 0)',
-                      1, 'rgb(255, 0, 0)'
-                    ] as any,
-                    'heatmap-radius': ['interpolate', ['linear'], ['zoom'], 0, 30, 9, 60] as any,
-                    'heatmap-opacity': opacity[0] / 100
+                    'raster-opacity': opacity[0] / 100,
+                    'raster-fade-duration': 300
                   }}
                 />
               </Source>
@@ -516,7 +553,7 @@ const MapView = () => {
             
             {/* Wind Flow Overlay - animated wind patterns */}
             {overlayType === 'wind' && heatmapData.features.length > 0 && (
-              <Source type="geojson" data={heatmapData}>
+              <Source id="wind-source" type="geojson" data={heatmapData}>
                 <Layer
                   id="wind-flow"
                   type="circle"
