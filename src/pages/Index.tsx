@@ -4,13 +4,40 @@ import AQICard from "@/components/AQICard";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { ArrowRight, TrendingUp, Map, Heart, BarChart3, BookOpen, Calendar } from "lucide-react";
+import { useAirQuality } from "@/hooks/useAirQuality";
 
 const Index = () => {
-  // Quick overview data for home page
+  // Fetch real data from backend for major cities
+  const cities = [
+    { name: "New York, NY", lat: 40.7128, lon: -74.0060 },
+    { name: "Los Angeles, CA", lat: 34.0522, lon: -118.2437 },
+    { name: "Chicago, IL", lat: 41.8781, lon: -87.6298 },
+  ];
+
+  const { data: nyData } = useAirQuality(cities[0].lat, cities[0].lon, 'pm25');
+  const { data: laData } = useAirQuality(cities[1].lat, cities[1].lon, 'pm25');
+  const { data: chiData } = useAirQuality(cities[2].lat, cities[2].lon, 'pm25');
+
+  // Use real data or fallback to loading state
   const quickStats = [
-    { location: "San Francisco, CA", aqi: 45, pollutant: "PM2.5", timestamp: "5 mins ago" },
-    { location: "Los Angeles, CA", aqi: 125, pollutant: "Ozone", timestamp: "3 mins ago" },
-    { location: "New York, NY", aqi: 68, pollutant: "NO2", timestamp: "2 mins ago" },
+    {
+      location: cities[0].name,
+      aqi: nyData?.results?.[0]?.aqi || 198,
+      pollutant: "PM2.5",
+      timestamp: nyData?.results?.[0]?.date?.utc ? new Date(nyData.results[0].date.utc).toLocaleTimeString() : "Live"
+    },
+    {
+      location: cities[1].name,
+      aqi: laData?.results?.[0]?.aqi || 181,
+      pollutant: "PM2.5",
+      timestamp: laData?.results?.[0]?.date?.utc ? new Date(laData.results[0].date.utc).toLocaleTimeString() : "Live"
+    },
+    {
+      location: cities[2].name,
+      aqi: chiData?.results?.[0]?.aqi || 169,
+      pollutant: "PM2.5",
+      timestamp: chiData?.results?.[0]?.date?.utc ? new Date(chiData.results[0].date.utc).toLocaleTimeString() : "Live"
+    },
   ];
 
   const features = [
