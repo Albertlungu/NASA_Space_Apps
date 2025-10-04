@@ -1,41 +1,43 @@
 source 'https://rubygems.org'
 
-ruby '~> 3.0'
+ruby '~> 3.4'
 
 # Web framework
-gem 'sinatra', '~> 3.1'
-gem 'sinatra-contrib', '~> 3.1'
-gem 'puma', '~> 6.4'
+gem 'sinatra', '~> 3.2'
+gem 'sinatra-contrib', '~> 3.2'
+gem 'puma', '~> 7.0'
 
 # CORS for React frontend
 gem 'rack-cors', '~> 2.0'
 
-# HTTP client
-gem 'http', '~> 5.1'
+# HTTP client for API calls
+gem 'httparty', '~> 0.21'
 
 # JSON handling
-gem 'json', '~> 2.6'
+gem 'json', '~> 2.7'
 
 # Environment variables
-gem 'dotenv', '~> 2.8'
+gem 'dotenv', '~> 3.1'
 
-# Database (SQLite for simplicity, can upgrade to PostgreSQL)
-gem 'sqlite3', '~> 1.6'
-gem 'activerecord', '~> 7.1'
+# Database
+gem 'sqlite3', '~> 2.4'
 
-# Background jobs for notifications
-gem 'sidekiq', '~> 7.2'
-gem 'redis', '~> 5.0'
+# Background jobs (optional)
+gem 'sidekiq', '~> 7.3', require: false
+gem 'redis', '~> 5.3', require: false
 
-# Machine Learning
-gem 'numo-narray', '~> 0.9'
+# Notifications (optional)
+gem 'twilio-ruby', '~> 7.3', require: false
 
-# Notifications
-gem 'twilio-ruby', '~> 6.9' # For SMS notifications
-
-# Scheduling
-gem 'rufus-scheduler', '~> 3.9'
+# Scheduling (optional)
+gem 'rufus-scheduler', '~> 3.9', require: false
 
 group :development do
   gem 'rerun', '~> 0.14'
+  gem 'pry', '~> 0.14'
+end
+
+group :test do
+  gem 'rack-test', '~> 2.1'
+  gem 'rspec', '~> 3.13'
 end
