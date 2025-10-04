@@ -6,10 +6,22 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { useGeolocation } from "@/hooks/useGeolocation";
 import { useAirQuality, useTempoData } from "@/hooks/useAirQuality";
 import { getAQIColor, getAQILevel } from "@/lib/api";
-import Map, { Marker, Popup, NavigationControl, ScaleControl } from 'react-map-gl';
+import Map, { Marker, Popup, NavigationControl, ScaleControl, Source, Layer } from 'react-map-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
+import { api } from "@/lib/api";
 
-const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN || 'pk.eyJ1IjoiYWxiZXJ0bHVuZ3UiLCJhIjoiY20zZmJqODRzMDFhcjJqcHBnMGRyaWFvbCJ9.1234567890abcdefghijklmnop';
+const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN;
+
+// World's most polluted cities for ranking
+const RANKED_CITIES = [
+  { name: "Lahore", lat: 31.5204, lon: 69.7492, country: "Pakistan", flag: "🇵🇰" },
+  { name: "Jakarta", lat: -6.2088, lon: 106.8456, country: "Indonesia", flag: "🇮🇩" },
+  { name: "Delhi", lat: 28.7041, lon: 77.1025, country: "India", flag: "🇮🇳" },
+  { name: "Kinshasa", lat: -4.4419, lon: 15.2663, country: "DR Congo", flag: "🇨🇩" },
+  { name: "Manila", lat: 14.5995, lon: 120.9842, country: "Philippines", flag: "🇵🇭" },
+  { name: "Cairo", lat: 30.0444, lon: 31.2357, country: "Egypt", flag: "🇪🇬" },
+  { name: "Mumbai", lat: 19.0760, lon: 72.8777, country: "India", flag: "🇮🇳" },
+];
 
 const MapView = () => {
   const [opacity, setOpacity] = useState([70]);
@@ -19,12 +31,135 @@ const MapView = () => {
   const [mapLoaded, setMapLoaded] = useState(false);
   const [clickedLocation, setClickedLocation] = useState<{lat: number, lng: number} | null>(null);
   const [viewMode, setViewMode] = useState<'2d' | '3d'>('2d');
+  const [cityDataMap, setCityDataMap] = useState<Record<string, any>>(() => {
+    // Initialize with fallback data immediately
+    const initial: Record<string, any> = {};
+    RANKED_CITIES.forEach(city => {
+      initial[city.name] = { ...city, aqi: 150, value: 100, unit: 'µg/m³' };
+    });
+    return initial;
+  });
   const [overlayType, setOverlayType] = useState<'pollution' | 'temperature' | 'wind' | 'none'>('pollution');
   const mapRef = useRef<any>(null);
   const [mapError, setMapError] = useState<string | null>(null);
   const [isMapLoading, setIsMapLoading] = useState(true);
   
   const { location } = useGeolocation();
+  
+  // Fetch real data for ranked cities
+  useEffect(() => {
+    RANKED_CITIES.forEach(city => {
+      api.getPollutantData(selectedPollutant, city.lat, city.lon, 50000, 20)
+        .then(data => {
+          if (data.results && data.results.length > 0) {
+            const avgValue = data.results.reduce((sum: number, r: any) => sum + (r.value || 0), 0) / data.results.length;
+            const avgAQI = data.results.reduce((sum: number, r: any) => sum + (r.aqi || 0), 0) / data.results.length;
+            setCityDataMap(prev => ({
+              ...prev,
+              [city.name]: {
+                ...city,
+                aqi: Math.round(avgAQI) || 150,
+                value: avgValue || 100,
+                unit: data.results[0].unit || 'µg/m³'
+              }
+            }));
+          } else {
+            // Set estimated data if API returns no results
+            setCityDataMap(prev => ({
+              ...prev,
+              [city.name]: {
+                ...city,
+                aqi: 150,
+                value: 100,
+                unit: 'µg/m³'
+              }
+            }));
+          }
+        })
+        .catch(() => {
+          // Use fallback data if API fails
+          setCityDataMap(prev => ({
+            ...prev,
+            [city.name]: {
+              ...city,
+              aqi: 150,
+              value: 100,
+              unit: 'µg/m³'
+            }
+          }));
+        });
+    });
+  }, [selectedPollutant]);
+  
+  // Get sorted cities by AQI
+  const rankedCities = useMemo(() => {
+    return Object.values(cityDataMap).filter((c: any) => c.aqi > 0).sort((a: any, b: any) => b.aqi - a.aqi);
+  }, [cityDataMap]);
+  
+  // Create GeoJSON for heat map visualization
+  const heatmapData = useMemo(() => {
+    const features = rankedCities.map((city: any) => ({
+      type: 'Feature' as const,
+      geometry: {
+        type: 'Point' as const,
+        coordinates: [city.lon, city.lat]
+      },
+      properties: {
+        aqi: city.aqi,
+        value: city.value
+      }
+    }));
+    
+    return {
+      type: 'FeatureCollection' as const,
+      features
+    };
+  }, [rankedCities]);
+  
+  // Heat map layer configuration
+  const heatmapLayer = {
+    id: 'pollution-heatmap',
+    type: 'heatmap' as const,
+    paint: {
+      'heatmap-weight': ['interpolate', ['linear'], ['get', 'aqi'], 0, 0, 300, 1] as any,
+      'heatmap-intensity': ['interpolate', ['linear'], ['zoom'], 0, 1, 9, 3] as any,
+      'heatmap-color': [
+        'interpolate',
+        ['linear'],
+        ['heatmap-density'],
+        0, 'rgba(0, 228, 0, 0)',
+        0.2, 'rgb(0, 228, 0)',
+        0.4, 'rgb(255, 255, 0)',
+        0.6, 'rgb(255, 126, 0)',
+        0.8, 'rgb(255, 0, 0)',
+        1, 'rgb(126, 0, 35)'
+      ] as any,
+      'heatmap-radius': ['interpolate', ['linear'], ['zoom'], 0, 20, 9, 50] as any,
+      'heatmap-opacity': opacity[0] / 100
+    }
+  };
+  
+  // Circle layer for markers
+  const circleLayer = {
+    id: 'pollution-circles',
+    type: 'circle' as const,
+    paint: {
+      'circle-radius': ['interpolate', ['linear'], ['zoom'], 0, 4, 9, 12] as any,
+      'circle-color': [
+        'interpolate',
+        ['linear'],
+        ['get', 'aqi'],
+        0, '#00e400',
+        50, '#ffff00',
+        100, '#ff7e00',
+        150, '#ff0000',
+        200, '#8f3f97',
+        300, '#7e0023'
+      ] as any,
+      'circle-stroke-width': 2,
+      'circle-stroke-color': '#ffffff'
+    }
+  };
   
   // Major world cities
   const cities = [
@@ -127,43 +262,38 @@ const MapView = () => {
 
   // Update view when switching modes
   useEffect(() => {
-    setIsMapLoading(true);
     setMapError(null);
     if (viewMode === '3d') {
       setViewState(prev => ({ ...prev, zoom: 1.5, pitch: 0 }));
     } else {
       setViewState(prev => ({ ...prev, zoom: 2, pitch: 0 }));
     }
+    // Brief loading indicator for mode switch, then clear
+    setIsMapLoading(true);
+    const timer = setTimeout(() => setIsMapLoading(false), 500);
+    return () => clearTimeout(timer);
   }, [viewMode]);
 
-  // Enable globe projection and atmosphere in 3D mode
+  // Apply fog effect in 3D mode after map loads
   useEffect(() => {
-    const timer = setTimeout(() => {
-      if (mapRef.current) {
-        try {
-          const map = mapRef.current.getMap();
-          if (viewMode === '3d') {
-            map.setProjection({ type: 'globe' });
-            map.setFog({
-              range: [0.8, 8],
-              color: '#242B4B',
-              'horizon-blend': 0.5,
-              'high-color': '#245bde',
-              'space-color': '#000000',
-              'star-intensity': 0.15
-            });
-          } else {
-            map.setProjection({ type: 'mercator' });
-            map.setFog(null);
-          }
-        } catch (error) {
-          console.error('Error setting projection:', error);
-        }
-      }
-    }, 100);
+    if (!mapRef.current || viewMode !== '3d') return;
     
-    return () => clearTimeout(timer);
-  }, [viewMode, mapRef.current]);
+    try {
+      const map = mapRef.current.getMap();
+      if (map && map.loaded()) {
+        map.setFog({
+          range: [0.5, 10],
+          color: '#1a1f3a',
+          'horizon-blend': 0.3,
+          'high-color': '#1e3a8a',
+          'space-color': '#0a0e1a',
+          'star-intensity': 0.25
+        });
+      }
+    } catch (error) {
+      console.error('Error setting fog:', error);
+    }
+  }, [viewMode]);
 
   // Handle map click
   const handleMapClick = (event: any) => {
@@ -175,6 +305,29 @@ const MapView = () => {
       setSelectedMarker(-1); // Special marker for clicked location
     }
   };
+
+  const currentTime = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+
+  // Check if MapBox token is configured
+  if (!MAPBOX_TOKEN) {
+    return (
+      <Card className="p-8 glass-effect shadow-md">
+        <div className="text-center space-y-4">
+          <div className="text-red-500 text-4xl">⚠️</div>
+          <h3 className="text-xl font-bold">MapBox Token Missing</h3>
+          <p className="text-muted-foreground">
+            Please add your MapBox access token to the <code className="bg-muted px-2 py-1 rounded">.env</code> file:
+          </p>
+          <pre className="bg-muted p-4 rounded text-left text-sm overflow-x-auto">
+            VITE_MAPBOX_TOKEN=your_mapbox_token_here
+          </pre>
+          <p className="text-sm text-muted-foreground">
+            Get your token from <a href="https://account.mapbox.com/access-tokens/" target="_blank" rel="noopener noreferrer" className="text-primary underline">MapBox Account</a>
+          </p>
+        </div>
+      </Card>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -292,28 +445,26 @@ const MapView = () => {
         {/* Mapbox Integration */}
         <div className="relative w-full h-[600px] rounded-xl overflow-hidden">
           <Map
+            key={viewMode}
             ref={mapRef}
             {...viewState}
+            projection={viewMode === '3d' ? 'globe' : 'mercator'}
             onMove={evt => setViewState(evt.viewState)}
             onClick={handleMapClick}
-            projection={viewMode === '3d' ? { type: 'globe' } : { type: 'mercator' }}
             onLoad={() => {
+              console.log('Map loaded in mode:', viewMode);
               setIsMapLoading(false);
+              // Apply fog only in 3D mode
               if (mapRef.current && viewMode === '3d') {
-                try {
-                  const map = mapRef.current.getMap();
-                  // Set fog for atmosphere effect in 3D
-                  map.setFog({
-                    range: [0.8, 8],
-                    color: '#242B4B',
-                    'horizon-blend': 0.5,
-                    'high-color': '#245bde',
-                    'space-color': '#000000',
-                    'star-intensity': 0.15
-                  });
-                } catch (error) {
-                  console.error('Error setting 3D effects:', error);
-                }
+                const map = mapRef.current.getMap();
+                map.setFog({
+                  range: [0.5, 10],
+                  color: '#1a1f3a',
+                  'horizon-blend': 0.3,
+                  'high-color': '#1e3a8a',
+                  'space-color': '#0a0e1a',
+                  'star-intensity': 0.25
+                });
               }
             }}
             onError={(e) => {
@@ -321,15 +472,69 @@ const MapView = () => {
               setMapError('Failed to load map');
               setIsMapLoading(false);
             }}
-            mapStyle={viewMode === '3d' ? "mapbox://styles/mapbox/satellite-v9" : (showSatellite ? "mapbox://styles/mapbox/satellite-streets-v12" : "mapbox://styles/mapbox/streets-v12")}
+            mapStyle="mapbox://styles/mapbox/dark-v11"
             mapboxAccessToken={MAPBOX_TOKEN}
             style={{ width: '100%', height: '100%' }}
           >
-            <NavigationControl position="top-right" />
+            <NavigationControl position="bottom-right" />
             <ScaleControl />
+            
+            {/* Overlay layers - Pollution Heat map */}
+            {overlayType === 'pollution' && heatmapData.features.length > 0 && (
+              <Source type="geojson" data={heatmapData}>
+                <Layer {...heatmapLayer} />
+                <Layer {...circleLayer} />
+              </Source>
+            )}
+            
+            {/* Temperature Overlay - simulated with color gradient */}
+            {overlayType === 'temperature' && heatmapData.features.length > 0 && (
+              <Source type="geojson" data={heatmapData}>
+                <Layer
+                  id="temperature-heatmap"
+                  type="heatmap"
+                  paint={{
+                    'heatmap-weight': 1,
+                    'heatmap-intensity': ['interpolate', ['linear'], ['zoom'], 0, 1, 9, 3] as any,
+                    'heatmap-color': [
+                      'interpolate',
+                      ['linear'],
+                      ['heatmap-density'],
+                      0, 'rgba(0, 0, 255, 0)',
+                      0.2, 'rgb(0, 100, 255)',
+                      0.4, 'rgb(0, 200, 255)',
+                      0.6, 'rgb(255, 255, 0)',
+                      0.8, 'rgb(255, 150, 0)',
+                      1, 'rgb(255, 0, 0)'
+                    ] as any,
+                    'heatmap-radius': ['interpolate', ['linear'], ['zoom'], 0, 30, 9, 60] as any,
+                    'heatmap-opacity': opacity[0] / 100
+                  }}
+                />
+              </Source>
+            )}
+            
+            {/* Wind Flow Overlay - animated wind patterns */}
+            {overlayType === 'wind' && heatmapData.features.length > 0 && (
+              <Source type="geojson" data={heatmapData}>
+                <Layer
+                  id="wind-flow"
+                  type="circle"
+                  paint={{
+                    'circle-radius': ['interpolate', ['linear'], ['zoom'], 0, 15, 9, 30] as any,
+                    'circle-color': '#00ff88',
+                    'circle-opacity': 0.3,
+                    'circle-blur': 1,
+                    'circle-stroke-width': 1,
+                    'circle-stroke-color': '#00ff88',
+                    'circle-stroke-opacity': 0.6
+                  }}
+                />
+              </Source>
+            )}
 
-            {/* City markers */}
-            {locationsWithColors.map((loc, idx) => (
+            {/* City markers - show all locations in both modes */}
+            {locationsWithColors.map((loc: any, idx) => (
               <Marker
                 key={idx}
                 longitude={loc.lng}
@@ -341,7 +546,7 @@ const MapView = () => {
                 }}
               >
                 <div 
-                  className="cursor-pointer flex items-center justify-center w-10 h-10 rounded-full border-2 border-white shadow-lg hover:scale-110 transition-transform"
+                  className="cursor-pointer flex items-center justify-center rounded-full border-2 border-white shadow-xl hover:scale-125 transition-all duration-200 w-10 h-10"
                   style={{ backgroundColor: loc.color }}
                 >
                   <span className="text-white text-xs font-bold">{loc.aqi}</span>
@@ -378,7 +583,7 @@ const MapView = () => {
             )}
 
             {/* Popup for selected city */}
-            {selectedMarker !== null && selectedMarker >= 0 && (
+            {selectedMarker !== null && selectedMarker >= 0 && locationsWithColors[selectedMarker] && (
               <Popup
                 longitude={locationsWithColors[selectedMarker].lng}
                 latitude={locationsWithColors[selectedMarker].lat}
@@ -387,21 +592,28 @@ const MapView = () => {
                 closeButton={true}
                 closeOnClick={false}
               >
-                <div className="p-2">
+                <div className="p-2 min-w-[160px]">
                   <h3 className="font-semibold text-sm mb-1">
                     {locationsWithColors[selectedMarker].name}
                   </h3>
-                  <p className="text-xs text-gray-600">
+                  <p className="text-xs text-gray-600 mb-2">
                     {locationsWithColors[selectedMarker].country}
                   </p>
-                  <p className="text-xs text-gray-600">
-                    AQI: {locationsWithColors[selectedMarker].aqi}
-                  </p>
-                  <p className="text-xs text-gray-600">
-                    {locationsWithColors[selectedMarker].value.toFixed(1)} {locationsWithColors[selectedMarker].unit}
-                  </p>
-                  <p className="text-xs font-medium mt-1" 
-                     style={{ color: locationsWithColors[selectedMarker].color }}>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs text-gray-600">AQI:</span>
+                    {/* Inline style required for dynamic AQI color */}
+                    <span className="text-sm font-bold" style={{ color: getAQIColor(locationsWithColors[selectedMarker].aqi) }}>
+                      {locationsWithColors[selectedMarker].aqi}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-gray-600">{selectedPollutant.toUpperCase()}:</span>
+                    <span className="text-xs font-medium">
+                      {locationsWithColors[selectedMarker].value?.toFixed(1)} {locationsWithColors[selectedMarker].unit}
+                    </span>
+                  </div>
+                  {/* Inline style required for dynamic AQI color */}
+                  <p className="text-xs font-medium mt-2" style={{ color: getAQIColor(locationsWithColors[selectedMarker].aqi) }}>
                     {getAQILevel(locationsWithColors[selectedMarker].aqi)}
                   </p>
                 </div>

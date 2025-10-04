@@ -35,16 +35,15 @@ DB_ENABLED = begin
 rescue LoadError => e
   puts "⚠ Running without database support: #{e.message}"
   puts "⚠ User tracking, alerts, and historical data features will be limited"
-  false
 rescue => e
-  puts "⚠ Database error: #{e.message}"
+  puts "Database error: #{e.message}"
   false
 end
 
 # CORS configuration for React frontend
 use Rack::Cors do
   allow do
-    origins ENV['FRONTEND_URL'] || 'http://localhost:3000'
+    origins ENV['FRONTEND_URL'] || 'http://localhost:8080', 'http://localhost:3000'
     resource '*',
       headers: :any,
       methods: [:get, :post, :put, :patch, :delete, :options],
