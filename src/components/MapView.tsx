@@ -9,6 +9,7 @@ import { getAQIColor, getAQILevel } from "@/lib/api";
 import Map, { Marker, Popup, NavigationControl, ScaleControl, Source, Layer } from 'react-map-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import { api } from "@/lib/api";
+import { WindParticles } from './WindParticles';
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN;
 
@@ -22,6 +23,41 @@ const RANKED_CITIES = [
   { name: "Cairo", lat: 30.0444, lon: 31.2357, country: "Egypt", flag: "🇪🇬" },
   { name: "Mumbai", lat: 19.0760, lon: 72.8777, country: "India", flag: "🇮🇳" },
 ];
+
+type OverlayLegendConfig = {
+  title: string;
+  stops: Array<{ color: string; position: number }>;
+  labels: string[];
+};
+
+const OVERLAY_LEGENDS: Record<'temperature' | 'wind', OverlayLegendConfig> = {
+  temperature: {
+    title: 'Temperature (°C)',
+    stops: [
+      { color: '#0B1D51', position: 0 },
+      { color: '#1464B4', position: 16 },
+      { color: '#1E9BFF', position: 32 },
+      { color: '#40E0D0', position: 48 },
+      { color: '#F5D300', position: 64 },
+      { color: '#FF8C00', position: 80 },
+      { color: '#FF4000', position: 90 },
+      { color: '#7F0000', position: 100 }
+    ],
+    labels: ['-40', '-20', '0', '10', '20', '30', '40', '50']
+  },
+  wind: {
+    title: 'Wind Speed (m/s)',
+    stops: [
+      { color: '#F1FCFF', position: 0 },
+      { color: '#A8E8FF', position: 20 },
+      { color: '#68C7FF', position: 40 },
+      { color: '#3994FF', position: 60 },
+      { color: '#784CFF', position: 80 },
+      { color: '#FF2F92', position: 100 }
+    ],
+    labels: ['0', '10', '20', '30', '40', '50']
+  }
+};
 
 const MapView = () => {
   const [opacity, setOpacity] = useState([70]);
@@ -44,6 +80,8 @@ const MapView = () => {
   const [mapError, setMapError] = useState<string | null>(null);
   const [isMapLoading, setIsMapLoading] = useState(true);
   const [temperatureData, setTemperatureData] = useState<any[]>([]);
+  const [windData, setWindData] = useState<Array<{ lat: number; lon: number; speed: number; direction: number }>>([]);
+  const [windDataTimestamp, setWindDataTimestamp] = useState(Date.now());
   // Get yesterday's date for NASA GIBS (today's data not available yet)
   const gibsDate = useMemo(() => {
     const yesterday = new Date();
@@ -317,6 +355,73 @@ const MapView = () => {
     };
   }, [overlayType]);
 
+  // Fetch wind data for particle animation (2D only)
+  useEffect(() => {
+    if (overlayType !== 'wind' || viewMode !== '2d' || !mapRef.current) return;
+    
+    const fetchWindData = async () => {
+      try {
+        const map = mapRef.current.getMap();
+        if (!map || !map.loaded()) return;
+        
+        const bounds = map.getBounds();
+        const north = bounds.getNorth();
+        const south = bounds.getSouth();
+        const east = bounds.getEast();
+        const west = bounds.getWest();
+        
+        // Create a grid of points to fetch wind data
+        const latStep = (north - south) / 8;
+        const lonStep = (east - west) / 8;
+        
+        const promises = [];
+        for (let i = 0; i <= 8; i++) {
+          for (let j = 0; j <= 8; j++) {
+            let lat = south + (i * latStep);
+            let lon = west + (j * lonStep);
+            
+            // Normalize coordinates to valid ranges
+            lat = Math.max(-85, Math.min(85, lat)); // Lat must be -85 to 85
+            // Normalize lon to -180 to 180
+            while (lon > 180) lon -= 360;
+            while (lon < -180) lon += 360;
+            
+            promises.push(
+              fetch(`https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=c8e28a232f71b820576f88f0599c8a09`)
+                .then(res => res.json())
+                .then(data => ({
+                  lat,
+                  lon,
+                  speed: data.wind?.speed || 0,
+                  direction: data.wind?.deg || 0
+                }))
+                .catch(() => ({ lat, lon, speed: 0, direction: 0 }))
+            );
+          }
+        }
+        
+        const results = await Promise.all(promises);
+        setWindData(results);
+        setWindDataTimestamp(Date.now()); // Update timestamp to force particle recreation
+      } catch (error) {
+        console.log('Wind data not available');
+      }
+    };
+    
+    fetchWindData();
+    
+    // Refetch when map moves/zooms
+    const map = mapRef.current.getMap();
+    const handleMoveEnd = () => {
+      if (overlayType === 'wind') fetchWindData();
+    };
+    map.on('moveend', handleMoveEnd);
+
+    return () => {
+      map.off('moveend', handleMoveEnd);
+    };
+  }, [overlayType, viewMode]);
+
   // Handle map click
   const handleMapClick = (event: any) => {
     if (event.lngLat) {
@@ -551,20 +656,24 @@ const MapView = () => {
               </Source>
             )}
             
-            {/* Wind Flow Overlay - animated wind patterns */}
-            {overlayType === 'wind' && heatmapData.features.length > 0 && (
-              <Source id="wind-source" type="geojson" data={heatmapData}>
+            {/* Wind Overlay - OpenWeatherMap wind speed tiles */}
+            {overlayType === 'wind' && (
+              <Source
+                id="wind-source"
+                type="raster"
+                tiles={[
+                  `https://tile.openweathermap.org/map/wind_new/{z}/{x}/{y}.png?appid=c8e28a232f71b820576f88f0599c8a09`
+                ]}
+                tileSize={256}
+                minzoom={0}
+                maxzoom={10}
+              >
                 <Layer
-                  id="wind-flow"
-                  type="circle"
+                  id="wind-layer"
+                  type="raster"
                   paint={{
-                    'circle-radius': ['interpolate', ['linear'], ['zoom'], 0, 15, 9, 30] as any,
-                    'circle-color': '#00ff88',
-                    'circle-opacity': 0.3,
-                    'circle-blur': 1,
-                    'circle-stroke-width': 1,
-                    'circle-stroke-color': '#00ff88',
-                    'circle-stroke-opacity': 0.6
+                    'raster-opacity': opacity[0] / 100 * 0.7,
+                    'raster-fade-duration': 300
                   }}
                 />
               </Source>
@@ -695,6 +804,23 @@ const MapView = () => {
               </Popup>
             )}
           </Map>
+          
+          {/* Wind Particles Animation Overlay */}
+          {overlayType === 'wind' && viewMode === '2d' && windData.length > 0 && mapRef.current && (
+            <WindParticles
+              key={`wind-${windDataTimestamp}`}
+              windData={windData}
+              bounds={{
+                north: mapRef.current.getMap().getBounds().getNorth(),
+                south: mapRef.current.getMap().getBounds().getSouth(),
+                east: mapRef.current.getMap().getBounds().getEast(),
+                west: mapRef.current.getMap().getBounds().getWest()
+              }}
+              zoom={viewState.zoom}
+              opacity={opacity[0] / 100}
+              viewMode={viewMode}
+            />
+          )}
           
           {/* Loading indicator */}
           {isMapLoading && (
