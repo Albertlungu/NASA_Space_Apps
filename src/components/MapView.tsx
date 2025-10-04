@@ -1,7 +1,7 @@
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
-import { MapPin, Layers, Satellite, Loader2 } from "lucide-react";
+import { MapPin, Layers, Satellite, Loader2, Globe } from "lucide-react";
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useGeolocation } from "@/hooks/useGeolocation";
 import { useAirQuality, useTempoData } from "@/hooks/useAirQuality";
@@ -18,6 +18,11 @@ const MapView = () => {
   const [selectedMarker, setSelectedMarker] = useState<number | null>(null);
   const [mapLoaded, setMapLoaded] = useState(false);
   const [clickedLocation, setClickedLocation] = useState<{lat: number, lng: number} | null>(null);
+  const [viewMode, setViewMode] = useState<'2d' | '3d'>('2d');
+  const [overlayType, setOverlayType] = useState<'pollution' | 'temperature' | 'wind' | 'none'>('pollution');
+  const mapRef = useRef<any>(null);
+  const [mapError, setMapError] = useState<string | null>(null);
+  const [isMapLoading, setIsMapLoading] = useState(true);
   
   const { location } = useGeolocation();
   
@@ -115,8 +120,50 @@ const MapView = () => {
   const [viewState, setViewState] = useState({
     longitude: -98.5795,
     latitude: 39.8283,
-    zoom: 2
+    zoom: 2,
+    pitch: 0,
+    bearing: 0
   });
+
+  // Update view when switching modes
+  useEffect(() => {
+    setIsMapLoading(true);
+    setMapError(null);
+    if (viewMode === '3d') {
+      setViewState(prev => ({ ...prev, zoom: 1.5, pitch: 0 }));
+    } else {
+      setViewState(prev => ({ ...prev, zoom: 2, pitch: 0 }));
+    }
+  }, [viewMode]);
+
+  // Enable globe projection and atmosphere in 3D mode
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (mapRef.current) {
+        try {
+          const map = mapRef.current.getMap();
+          if (viewMode === '3d') {
+            map.setProjection({ type: 'globe' });
+            map.setFog({
+              range: [0.8, 8],
+              color: '#242B4B',
+              'horizon-blend': 0.5,
+              'high-color': '#245bde',
+              'space-color': '#000000',
+              'star-intensity': 0.15
+            });
+          } else {
+            map.setProjection({ type: 'mercator' });
+            map.setFog(null);
+          }
+        } catch (error) {
+          console.error('Error setting projection:', error);
+        }
+      }
+    }, 100);
+    
+    return () => clearTimeout(timer);
+  }, [viewMode, mapRef.current]);
 
   // Handle map click
   const handleMapClick = (event: any) => {
@@ -173,40 +220,108 @@ const MapView = () => {
 
       <Card className="p-6 glass-effect shadow-md">
         {/* Map Controls */}
-        <div className="flex items-center justify-between mb-4 pb-4 border-b border-border">
+        <div className="space-y-3 mb-4 pb-4 border-b border-border">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Button
+                variant={viewMode === '2d' ? "default" : "outline"}
+                size="sm"
+                onClick={() => setViewMode('2d')}
+              >
+                <MapPin className="w-4 h-4 mr-2" />
+                2D Map
+              </Button>
+              <Button
+                variant={viewMode === '3d' ? "default" : "outline"}
+                size="sm"
+                onClick={() => setViewMode('3d')}
+              >
+                <Globe className="w-4 h-4 mr-2" />
+                3D Globe
+              </Button>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground mr-2">Opacity:</span>
+              <div className="w-32">
+                <Slider
+                  value={opacity}
+                  onValueChange={setOpacity}
+                  max={100}
+                  step={1}
+                />
+              </div>
+              <span className="text-sm font-medium w-12">{opacity[0]}%</span>
+            </div>
+          </div>
           <div className="flex items-center gap-2">
+            <span className="text-sm font-medium mr-2">Overlays:</span>
             <Button
-              variant={showSatellite ? "default" : "outline"}
+              variant={overlayType === 'pollution' ? "default" : "outline"}
               size="sm"
-              onClick={() => setShowSatellite(!showSatellite)}
+              onClick={() => setOverlayType('pollution')}
             >
               <Satellite className="w-4 h-4 mr-2" />
-              TEMPO Overlay
+              Pollution
+            </Button>
+            <Button
+              variant={overlayType === 'temperature' ? "default" : "outline"}
+              size="sm"
+              onClick={() => setOverlayType('temperature')}
+            >
+              <Layers className="w-4 h-4 mr-2" />
+              Temperature
+            </Button>
+            <Button
+              variant={overlayType === 'wind' ? "default" : "outline"}
+              size="sm"
+              onClick={() => setOverlayType('wind')}
+            >
+              <Layers className="w-4 h-4 mr-2" />
+              Wind
+            </Button>
+            <Button
+              variant={overlayType === 'none' ? "default" : "outline"}
+              size="sm"
+              onClick={() => setOverlayType('none')}
+            >
+              None
             </Button>
           </div>
-
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-muted-foreground mr-2">Opacity:</span>
-            <div className="w-32">
-              <Slider
-                value={opacity}
-                onValueChange={setOpacity}
-                max={100}
-                step={1}
-              />
-            </div>
-            <span className="text-sm font-medium w-12">{opacity[0]}%</span>
-          </div>
-
         </div>
 
         {/* Mapbox Integration */}
         <div className="relative w-full h-[600px] rounded-xl overflow-hidden">
           <Map
+            ref={mapRef}
             {...viewState}
             onMove={evt => setViewState(evt.viewState)}
             onClick={handleMapClick}
-            mapStyle={showSatellite ? "mapbox://styles/mapbox/satellite-streets-v12" : "mapbox://styles/mapbox/streets-v12"}
+            projection={viewMode === '3d' ? { type: 'globe' } : { type: 'mercator' }}
+            onLoad={() => {
+              setIsMapLoading(false);
+              if (mapRef.current && viewMode === '3d') {
+                try {
+                  const map = mapRef.current.getMap();
+                  // Set fog for atmosphere effect in 3D
+                  map.setFog({
+                    range: [0.8, 8],
+                    color: '#242B4B',
+                    'horizon-blend': 0.5,
+                    'high-color': '#245bde',
+                    'space-color': '#000000',
+                    'star-intensity': 0.15
+                  });
+                } catch (error) {
+                  console.error('Error setting 3D effects:', error);
+                }
+              }
+            }}
+            onError={(e) => {
+              console.error('Map error:', e);
+              setMapError('Failed to load map');
+              setIsMapLoading(false);
+            }}
+            mapStyle={viewMode === '3d' ? "mapbox://styles/mapbox/satellite-v9" : (showSatellite ? "mapbox://styles/mapbox/satellite-streets-v12" : "mapbox://styles/mapbox/streets-v12")}
             mapboxAccessToken={MAPBOX_TOKEN}
             style={{ width: '100%', height: '100%' }}
           >
@@ -331,6 +446,23 @@ const MapView = () => {
               </Popup>
             )}
           </Map>
+          
+          {/* Loading indicator */}
+          {isMapLoading && (
+            <div className="absolute inset-0 flex items-center justify-center bg-background/80 backdrop-blur-sm">
+              <div className="flex flex-col items-center gap-3">
+                <Loader2 className="w-8 h-8 animate-spin text-primary" />
+                <span className="text-sm text-muted-foreground">Loading {viewMode === '3d' ? '3D Globe' : 'Map'}...</span>
+              </div>
+            </div>
+          )}
+          
+          {/* Error display */}
+          {mapError && (
+            <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-destructive text-destructive-foreground px-4 py-2 rounded-lg shadow-lg">
+              {mapError}
+            </div>
+          )}
         </div>
 
         {/* Legend */}
