@@ -281,3 +281,28 @@ export function getAQIRecommendation(aqi: number): string {
   if (aqi <= 300) return 'Avoid outdoor activities';
   return 'Stay indoors and keep windows closed';
 }
+
+export const getLocationFromCoords = async (lat: number, lon: number) => {
+  try {
+    const response = await fetch(
+      `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`,
+      {
+        headers: {
+          'User-Agent': 'NASA-TEMPO-Air-Quality-App' // Required by Nominatim
+        }
+      }
+    );
+    const data = await response.json();
+    
+    const city = data.address.city || 
+                 data.address.town || 
+                 data.address.village || 
+                 data.address.county;
+    const country = data.address.country;
+    
+    return { city, country };
+  } catch (error) {
+    console.error('Reverse geocoding failed:', error);
+    return null;
+  }
+};

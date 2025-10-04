@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import AQICard from "./AQICard";
 import ExposureTracker from "./ExposureTracker";
 import AlertPanel from "./AlertPanel";
@@ -5,7 +6,7 @@ import { Activity, TrendingUp, Wind, Droplets } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { useGeolocation } from "@/hooks/useGeolocation";
 import { useAirQuality, useTempoData } from "@/hooks/useAirQuality";
-import { getAQIColor } from "@/lib/api";
+import { getAQIColor, getLocationFromCoords } from "@/lib/api";
 
 const Dashboard = () => {
   const { location } = useGeolocation();
@@ -15,14 +16,43 @@ const Dashboard = () => {
   const { data: no2Data } = useAirQuality(location?.lat, location?.lon, 'no2');
   const { data: o3Data } = useAirQuality(location?.lat, location?.lon, 'o3');
   const { data: tempoData } = useTempoData(location?.lat, location?.lon);
+  
+  const [enrichedLocations, setEnrichedLocations] = useState([]);
 
-  // Get real location data from backend
-  const mockLocations = pm25Data?.results?.slice(0, 3).map(reading => ({
-    location: `${reading.city || 'Unknown'}, ${reading.country || ''}`,
-    aqi: reading.aqi,
-    pollutant: "PM2.5",
-    timestamp: reading.date?.utc ? new Date(reading.date.utc).toLocaleTimeString() : "Live"
-  })) || [
+  useEffect(() => {
+    const enrichLocations = async () => {
+      if (!pm25Data?.results) return;
+      
+      const locations = await Promise.all(
+        pm25Data.results.slice(0, 3).map(async (reading) => {
+          const coords = reading.coordinates;
+          let locationLabel = 'Unknown Location';
+          
+          if (coords) {
+            const location = await getLocationFromCoords(coords.latitude, coords.longitude);
+            if (location) {
+              locationLabel = `${location.city}, ${location.country}`;
+            }
+          }
+          
+          return {
+            location: locationLabel,
+            aqi: reading.aqi,
+            pollutant: "PM2.5",
+            timestamp: reading.date?.local 
+              ? new Date(reading.date.local).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+              : "Live"
+          };
+        })
+      );
+      
+      setEnrichedLocations(locations);
+    };
+    
+    enrichLocations();
+  }, [pm25Data]);
+
+  const mockLocations = enrichedLocations.length > 0 ? enrichedLocations : [
     { location: "Manhattan, US", aqi: 198, pollutant: "PM2.5", timestamp: "Live" },
     { location: "Brooklyn, US", aqi: 181, pollutant: "PM2.5", timestamp: "Live" },
     { location: "Queens, US", aqi: 169, pollutant: "PM2.5", timestamp: "Live" },
