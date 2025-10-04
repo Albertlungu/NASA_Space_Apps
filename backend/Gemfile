@@ -1,0 +1,41 @@
+source 'https://rubygems.org'
+
+ruby '~> 3.0'
+
+# Web framework
+gem 'sinatra', '~> 3.1'
+gem 'sinatra-contrib', '~> 3.1'
+gem 'puma', '~> 6.4'
+
+# CORS for React frontend
+gem 'rack-cors', '~> 2.0'
+
+# HTTP client
+gem 'http', '~> 5.1'
+
+# JSON handling
+gem 'json', '~> 2.6'
+
+# Environment variables
+gem 'dotenv', '~> 2.8'
+
+# Database (SQLite for simplicity, can upgrade to PostgreSQL)
+gem 'sqlite3', '~> 1.6'
+gem 'activerecord', '~> 7.1'
+
+# Background jobs for notifications
+gem 'sidekiq', '~> 7.2'
+gem 'redis', '~> 5.0'
+
+# Machine Learning
+gem 'numo-narray', '~> 0.9'
+
+# Notifications
+gem 'twilio-ruby', '~> 6.9' # For SMS notifications
+
+# Scheduling
+gem 'rufus-scheduler', '~> 3.9'
+
+group :development do
+  gem 'rerun', '~> 0.14'
+end

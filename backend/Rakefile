@@ -1,0 +1,133 @@
+require 'active_record'
+require 'dotenv/load'
+
+def establish_db_connection
+  ActiveRecord::Base.establish_connection(
+    adapter: 'sqlite3',
+    database: 'db/development.sqlite3'
+  )
+end
+
+namespace :db do
+  desc "Create the database"
+  task :create do
+    FileUtils.mkdir_p('db')
+    puts "Database directory created"
+  end
+
+  desc "Run migrations"
+  task :migrate do
+    establish_db_connection
+    
+    # Create schema_migrations table if it doesn't exist
+    unless ActiveRecord::Base.connection.table_exists?(:schema_migrations)
+      ActiveRecord::Base.connection.create_table :schema_migrations do |t|
+        t.string :version, null: false
+      end
+      ActiveRecord::Base.connection.add_index :schema_migrations, :version, unique: true
+    end
+    
+    # Run migrations
+    ActiveRecord::Migration.verbose = true
+    
+    migration_files = Dir.glob('db/migrate/*.rb').sort
+    
+    migration_files.each do |file|
+      version = File.basename(file).match(/^(\d+)/)[1]
+      
+      unless ActiveRecord::Base.connection.select_value(
+        "SELECT version FROM schema_migrations WHERE version = '#{version}'"
+      )
+        load file
+        
+        # Get the migration class name from the file
+        class_name = File.basename(file, '.rb').split('_')[1..-1].map(&:capitalize).join
+        migration_class = Object.const_get(class_name)
+        
+        migration_class.new.migrate(:up)
+        ActiveRecord::Base.connection.execute(
+          "INSERT INTO schema_migrations (version) VALUES ('#{version}')"
+        )
+        puts "Migrated #{class_name} (#{version})"
+      end
+    end
+    
+    puts "Migrations completed"
+  end
+
+  desc "Rollback the last migration"
+  task :rollback do
+    establish_db_connection
+    puts "Rollback not implemented - use db:reset to start fresh"
+  end
+
+  desc "Drop the database"
+  task :drop do
+    File.delete('db/development.sqlite3') if File.exist?('db/development.sqlite3')
+    puts "Database dropped"
+  end
+
+  desc "Reset the database"
+  task reset: [:drop, :create, :migrate] do
+    puts "Database reset completed"
+  end
+
+  desc "Seed the database with sample data"
+  task :seed do
+    require_relative 'app'
+    
+    puts "Seeding database..."
+    
+    # Create sample user
+    user = User.create(
+      email: 'test@example.com',
+      name: 'Test User',
+      phone: '+1234567890',
+      notification_preferences: { email: true, sms: false }.to_json
+    )
+    
+    puts "Created user: #{user.email}"
+    
+    # Create sample readings
+    pollutants = ['no2', 'pm25', 'o3']
+    cities = [
+      { name: 'New York', lat: 40.7128, lon: -74.0060 },
+      { name: 'Los Angeles', lat: 34.0522, lon: -118.2437 },
+      { name: 'Chicago', lat: 41.8781, lon: -87.6298 }
+    ]
+    
+    100.times do |i|
+      city = cities.sample
+      pollutant = pollutants.sample
+      
+      AirQualityReading.create(
+        pollutant: pollutant,
+        value: rand(10.0..150.0).round(2),
+        unit: pollutant == 'pm25' ? 'µg/m³' : 'ppb',
+        latitude: city[:lat] + rand(-0.1..0.1),
+        longitude: city[:lon] + rand(-0.1..0.1),
+        location_name: "Station #{i}",
+        city: city[:name],
+        country: 'USA',
+        aqi: rand(20..200),
+        measured_at: Time.now - rand(0..168).hours
+      )
+    end
+    
+    puts "Created 100 sample air quality readings"
+    
+    # Create sample alert
+    Alert.create(
+      severity: 'high',
+      pollutant: 'pm25',
+      aqi: 175,
+      latitude: 40.7128,
+      longitude: -74.0060,
+      message: 'High PM2.5 levels detected in New York area',
+      active: true
+    )
+    
+    puts "Created sample alert"
+    puts "Seeding completed!"
+  end
+end
