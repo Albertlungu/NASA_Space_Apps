@@ -10,6 +10,7 @@ import Map, { Marker, Popup, NavigationControl, ScaleControl, Source, Layer } fr
 import 'mapbox-gl/dist/mapbox-gl.css';
 import { api } from "@/lib/api";
 import { WindParticles } from './WindParticles';
+import { getWAQIDataByCoords } from '@/lib/api';
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN;
 
@@ -65,15 +66,9 @@ const MapView = () => {
   const [selectedMarker, setSelectedMarker] = useState<number | null>(null);
   const [mapLoaded, setMapLoaded] = useState(false);
   const [clickedLocation, setClickedLocation] = useState<{lat: number, lng: number} | null>(null);
+  const [clickedLocationData, setClickedLocationData] = useState<any>(null);
   const [viewMode, setViewMode] = useState<'2d' | '3d'>('2d');
-  const [cityDataMap, setCityDataMap] = useState<Record<string, any>>(() => {
-    // Initialize with fallback data immediately
-    const initial: Record<string, any> = {};
-    RANKED_CITIES.forEach(city => {
-      initial[city.name] = { ...city, aqi: 150, value: 100, unit: 'µg/m³' };
-    });
-    return initial;
-  });
+  const [cityDataMap, setCityDataMap] = useState<Record<string, any>>({});
   const [overlayType, setOverlayType] = useState<'pollution' | 'temperature' | 'wind' | 'none'>('pollution');
   const mapRef = useRef<any>(null);
   const [mapError, setMapError] = useState<string | null>(null);
@@ -91,47 +86,32 @@ const MapView = () => {
   const { location } = useGeolocation();
   
   // Fetch real data for ranked cities
+  // Fetch REAL data from WAQI API using coordinates - NO HARDCODED VALUES
   useEffect(() => {
-    RANKED_CITIES.forEach(city => {
-      api.getPollutantData(selectedPollutant, city.lat, city.lon, 50000, 20)
-        .then(data => {
-          if (data.results && data.results.length > 0) {
-            const avgValue = data.results.reduce((sum: number, r: any) => sum + (r.value || 0), 0) / data.results.length;
-            const avgAQI = data.results.reduce((sum: number, r: any) => sum + (r.aqi || 0), 0) / data.results.length;
-            setCityDataMap(prev => ({
-              ...prev,
-              [city.name]: {
-                ...city,
-                aqi: Math.round(avgAQI) || 150,
-                value: avgValue || 100,
-                unit: data.results[0].unit || 'µg/m³'
-              }
-            }));
-          } else {
-            // Set estimated data if API returns no results
-            setCityDataMap(prev => ({
-              ...prev,
-              [city.name]: {
-                ...city,
-                aqi: 150,
-                value: 100,
-                unit: 'µg/m³'
-              }
-            }));
+    const allCities = [...RANKED_CITIES, ...cities];
+    
+    allCities.forEach(async (city) => {
+      const waqiData = await getWAQIDataByCoords(
+        city.lat, 
+        city.lon, 
+        import.meta.env.VITE_AQI_TOKEN
+      );
+      
+      if (waqiData) {
+        const pollutantValue = selectedPollutant === 'pm25' ? waqiData.pm25 :
+                              selectedPollutant === 'no2' ? waqiData.no2 :
+                              waqiData.o3;
+        
+        setCityDataMap(prev => ({
+          ...prev,
+          [city.name]: {
+            ...city,
+            aqi: waqiData.aqi,
+            value: pollutantValue || waqiData.aqi,
+            unit: 'µg/m³'
           }
-        })
-        .catch(() => {
-          // Use fallback data if API fails
-          setCityDataMap(prev => ({
-            ...prev,
-            [city.name]: {
-              ...city,
-              aqi: 150,
-              value: 100,
-              unit: 'µg/m³'
-            }
-          }));
-        });
+        }));
+      }
     });
   }, [selectedPollutant]);
   
@@ -262,52 +242,47 @@ const MapView = () => {
     { name: "Melbourne", lat: -37.8136, lon: 144.9631, country: "Australia" },
   ];
 
-  // Fetch data for clicked location
-  const { data: clickedData } = useAirQuality(
-    clickedLocation?.lat, 
-    clickedLocation?.lng, 
-    selectedPollutant
-  );
+  // Fetch WAQI data for clicked location
+  useEffect(() => {
+    if (!clickedLocation) {
+      setClickedLocationData(null);
+      return;
+    }
+    
+    const fetchClickedData = async () => {
+      const waqiData = await getWAQIDataByCoords(
+        clickedLocation.lat,
+        clickedLocation.lng,
+        import.meta.env.VITE_AQI_TOKEN
+      );
+      
+      if (waqiData) {
+        const pollutantValue = selectedPollutant === 'pm25' ? waqiData.pm25 :
+                              selectedPollutant === 'no2' ? waqiData.no2 :
+                              waqiData.o3;
+        
+        setClickedLocationData({
+          aqi: waqiData.aqi,
+          value: pollutantValue || waqiData.aqi,
+          unit: 'µg/m³'
+        });
+      }
+    };
+    
+    fetchClickedData();
+  }, [clickedLocation, selectedPollutant]);
   
   // Get TEMPO satellite data for current location
   const { data: tempoData, isLoading: tempoLoading } = useTempoData(location?.lat, location?.lon);
 
-  // Use memoized locations with estimated AQI for all cities
-  const locations = useMemo(() => cities.map((city, idx) => {
-    // Estimate AQI based on typical pollution levels by region
-    let estimatedAQI = 50; // Default moderate
-    
-    // Asia typically higher
-    if (['China', 'India', 'Thailand'].includes(city.country)) estimatedAQI = 150;
-    // Middle East
-    else if (city.country === 'UAE') estimatedAQI = 120;
-    // Europe typically better
-    else if (['UK', 'France', 'Germany', 'Spain', 'Italy'].includes(city.country)) estimatedAQI = 45;
-    // North America varies
-    else if (city.country === 'USA') estimatedAQI = 85;
-    // South America
-    else if (['Brazil', 'Argentina', 'Peru'].includes(city.country)) estimatedAQI = 95;
-    // Africa
-    else if (['Egypt', 'Nigeria', 'South Africa'].includes(city.country)) estimatedAQI = 110;
-    // Oceania typically good
-    else if (city.country === 'Australia') estimatedAQI = 40;
-    
-    return {
-      name: city.name,
-      country: city.country,
-      lat: city.lat,
-      lng: city.lon,
-      aqi: estimatedAQI,
-      value: estimatedAQI * 0.7, // Rough PM2.5 estimate
-      unit: 'µg/m³'
-    };
-  }), [cities]);
-
-  // Get color for each location based on AQI
-  const locationsWithColors = useMemo(() => locations.map(loc => ({
-    ...loc,
-    color: getAQIColor(loc.aqi)
-  })), [locations]);
+  // Get color for each location based on REAL AQI data from cityDataMap
+  const locationsWithColors = useMemo(() => {
+    return Object.values(cityDataMap).map((loc: any) => ({
+      ...loc,
+      lng: loc.lon, // Add lng property for Mapbox markers
+      color: getAQIColor(loc.aqi)
+    }));
+  }, [cityDataMap]);
   
   // Mapbox viewport state
   const [viewState, setViewState] = useState({
@@ -735,14 +710,14 @@ const MapView = () => {
                 <div 
                   className="cursor-pointer flex items-center justify-center w-12 h-12 rounded-full border-4 border-white shadow-xl hover:scale-110 transition-transform"
                   style={{ 
-                    backgroundColor: clickedData?.results?.[0]?.aqi 
-                      ? getAQIColor(clickedData.results[0].aqi) 
+                    backgroundColor: clickedLocationData?.aqi 
+                      ? getAQIColor(clickedLocationData.aqi) 
                       : '#666666'
                   }}
                 >
-                  {clickedData?.results?.[0]?.aqi && (
+                  {clickedLocationData?.aqi && (
                     <span className="text-white text-xs font-bold">
-                      {clickedData.results[0].aqi}
+                      {clickedLocationData.aqi}
                     </span>
                   )}
                 </div>
@@ -801,21 +776,23 @@ const MapView = () => {
                 closeOnClick={false}
               >
                 <div className="p-2">
-                  <h3 className="font-semibold text-sm mb-1">Custom Location</h3>
+                  <h3 className="font-semibold text-sm mb-1">
+                    {clickedLocationData?.station || 'Custom Location'}
+                  </h3>
                   <p className="text-xs text-gray-600">
-                    {clickedLocation.lat.toFixed(4)}, {clickedLocation.lng.toFixed(4)}
+                    Station: {clickedLocation.lat.toFixed(4)}, {clickedLocation.lng.toFixed(4)}
                   </p>
-                  {clickedData?.results?.[0] ? (
+                  {clickedLocationData ? (
                     <>
                       <p className="text-xs text-gray-600">
-                        AQI: {clickedData.results[0].aqi}
+                        AQI: {clickedLocationData.aqi}
                       </p>
                       <p className="text-xs text-gray-600">
-                        {clickedData.results[0].value?.toFixed(1)} {clickedData.results[0].unit}
+                        {clickedLocationData.value?.toFixed(1)} {clickedLocationData.unit}
                       </p>
                       <p className="text-xs font-medium mt-1" 
-                         style={{ color: getAQIColor(clickedData.results[0].aqi) }}>
-                        {getAQILevel(clickedData.results[0].aqi)}
+                         style={{ color: getAQIColor(clickedLocationData.aqi) }}>
+                        {getAQILevel(clickedLocationData.aqi)}
                       </p>
                     </>
                   ) : (
