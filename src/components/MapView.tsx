@@ -76,6 +76,7 @@ const MapView = () => {
   const [temperatureData, setTemperatureData] = useState<any[]>([]);
   const [windData, setWindData] = useState<Array<{ lat: number; lon: number; speed: number; direction: number }>>([]);
   const [windDataTimestamp, setWindDataTimestamp] = useState(Date.now());
+  const [currentLocationWAQI, setCurrentLocationWAQI] = useState<any>(null);
   // Get yesterday's date for NASA GIBS (today's data not available yet)
   const gibsDate = useMemo(() => {
     const yesterday = new Date();
@@ -272,8 +273,24 @@ const MapView = () => {
     fetchClickedData();
   }, [clickedLocation, selectedPollutant]);
   
-  // Get TEMPO satellite data for current location
-  const { data: tempoData, isLoading: tempoLoading } = useTempoData(location?.lat, location?.lon);
+  // Fetch WAQI data for current location
+  useEffect(() => {
+    const fetchCurrentLocationData = async () => {
+      if (!location?.lat || !location?.lon) return;
+      
+      const waqiData = await getWAQIDataByCoords(
+        location.lat,
+        location.lon,
+        import.meta.env.VITE_AQI_TOKEN
+      );
+      
+      if (waqiData) {
+        setCurrentLocationWAQI(waqiData);
+      }
+    };
+    
+    fetchCurrentLocationData();
+  }, [location?.lat, location?.lon, selectedPollutant]);
 
   // Get color for each location based on REAL AQI data from cityDataMap
   const locationsWithColors = useMemo(() => {
@@ -479,7 +496,7 @@ const MapView = () => {
           <div>
             <h3 className="text-2xl font-bold">Interactive Air Quality Map</h3>
             <p className="text-sm text-muted-foreground">
-              Real-time TEMPO satellite data visualization {tempoLoading && <Loader2 className="inline w-4 h-4 animate-spin ml-2" />}
+              Real-time WAQI air quality data visualization
             </p>
           </div>
         </div>
@@ -872,14 +889,15 @@ const MapView = () => {
         </div>
       </Card>
 
-      {/* TEMPO Satellite Data Display */}
-      {tempoData?.data && (
+      {/* Real-time WAQI Data Display */}
+      {currentLocationWAQI?.aqi && (
         <Card className="p-6 glass-effect shadow-md border-primary/20">
           <div className="flex items-center gap-3 mb-4">
             <div className="p-2 rounded-full bg-primary/10">
               <Satellite className="w-5 h-5 text-primary" />
             </div>
             <div>
+              <h4 className="font-semibold">Real-time WAQI Data</h4>
               <h4 className="font-semibold">NASA TEMPO Satellite Data</h4>
               <p className="text-xs text-muted-foreground">
                 Current location: {location?.lat.toFixed(4)}, {location?.lon.toFixed(4)}
@@ -888,41 +906,41 @@ const MapView = () => {
           </div>
           
           <div className="grid grid-cols-3 gap-4">
-            {tempoData.data.pm25 && (
+            {currentLocationWAQI.pm25 && (
               <div className="p-4 rounded-lg bg-muted/50">
                 <div className="text-sm text-muted-foreground mb-1">PM2.5</div>
-                <div className="text-2xl font-bold">{tempoData.data.pm25.value.toFixed(1)}</div>
-                <div className="text-xs text-muted-foreground">{tempoData.data.pm25.unit}</div>
-                <div className="text-xs font-medium mt-2" style={{ color: getAQIColor(tempoData.data.pm25.aqi) }}>
-                  AQI: {tempoData.data.pm25.aqi}
+                <div className="text-2xl font-bold">{currentLocationWAQI.pm25.toFixed(1)}</div>
+                <div className="text-xs text-muted-foreground">µg/m³</div>
+                <div className="text-xs font-medium mt-2" style={{ color: getAQIColor(currentLocationWAQI.aqi) }}>
+                  AQI: {currentLocationWAQI.aqi}
                 </div>
               </div>
             )}
-            {tempoData.data.no2 && (
+            {currentLocationWAQI.no2 && (
               <div className="p-4 rounded-lg bg-muted/50">
                 <div className="text-sm text-muted-foreground mb-1">NO₂</div>
-                <div className="text-2xl font-bold">{tempoData.data.no2.value.toFixed(1)}</div>
-                <div className="text-xs text-muted-foreground">{tempoData.data.no2.unit}</div>
-                <div className="text-xs font-medium mt-2" style={{ color: getAQIColor(tempoData.data.no2.aqi) }}>
-                  AQI: {tempoData.data.no2.aqi}
+                <div className="text-2xl font-bold">{currentLocationWAQI.no2.toFixed(1)}</div>
+                <div className="text-xs text-muted-foreground">ppb</div>
+                <div className="text-xs font-medium mt-2" style={{ color: getAQIColor(currentLocationWAQI.aqi) }}>
+                  AQI: {currentLocationWAQI.aqi}
                 </div>
               </div>
             )}
-            {tempoData.data.o3 && (
+            {currentLocationWAQI.o3 && (
               <div className="p-4 rounded-lg bg-muted/50">
                 <div className="text-sm text-muted-foreground mb-1">O₃</div>
-                <div className="text-2xl font-bold">{tempoData.data.o3.value.toFixed(1)}</div>
-                <div className="text-xs text-muted-foreground">{tempoData.data.o3.unit}</div>
-                <div className="text-xs font-medium mt-2" style={{ color: getAQIColor(tempoData.data.o3.aqi) }}>
-                  AQI: {tempoData.data.o3.aqi}
+                <div className="text-2xl font-bold">{currentLocationWAQI.o3.toFixed(1)}</div>
+                <div className="text-xs text-muted-foreground">ppb</div>
+                <div className="text-xs font-medium mt-2" style={{ color: getAQIColor(currentLocationWAQI.aqi) }}>
+                  AQI: {currentLocationWAQI.aqi}
                 </div>
               </div>
             )}
           </div>
           
           <div className="mt-4 text-xs text-muted-foreground">
-            <p>Last updated: {new Date(tempoData.timestamp).toLocaleString()}</p>
-            <p className="mt-1">Data aggregated from {tempoData.data.pm25?.measurements_count || 0} ground stations</p>
+            <p>Last updated: {new Date().toLocaleString()}</p>
+            <p className="mt-1">Data aggregated from {currentLocationWAQI.station || 'monitoring station'}</p>
           </div>
         </Card>
       )}
