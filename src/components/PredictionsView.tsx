@@ -190,7 +190,7 @@ const PredictionsView = () => {
       {/* Header */}
       <div style={{ marginBottom: '30px', textAlign: 'center' }}>
         <h1 style={{ fontSize: '32px', fontWeight: 'bold', marginBottom: '10px' }}>
-          🤖 ML Air Quality Predictions
+          ML Air Quality Predictions
         </h1>
         <p style={{ color: '#666', marginBottom: '10px' }}>
           Location: {location.lat.toFixed(4)}, {location.lon.toFixed(4)}
@@ -215,7 +215,7 @@ const PredictionsView = () => {
       <div style={{ 
         marginBottom: '30px',
         padding: '30px',
-        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+        background: '#3b82f6',
         borderRadius: '16px',
         color: 'white',
         textAlign: 'center',
@@ -247,7 +247,7 @@ const PredictionsView = () => {
         boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
       }}>
         <h2 style={{ fontSize: '24px', fontWeight: 'bold', marginBottom: '15px' }}>
-          📈 24-Hour Forecast
+          24-Hour Forecast
         </h2>
         <div style={{ overflowX: 'auto' }}>
           <table style={{ 

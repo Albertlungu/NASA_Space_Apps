@@ -78,6 +78,18 @@ def start_health_predictor
   unless File.exist?(python_file)
     puts "⚠️  HealthPredictor.py not found at #{python_file}"
     return
+  end
+
+  # Detect OS and choose appropriate background execution
+  if RUBY_PLATFORM =~ /mswin|mingw|cygwin/  # Windows
+    puts "🚀 Starting HealthPredictor.py (Windows)..."
+    system("start /B python #{python_file}")
+  else # macOS / Linux
+    puts "🚀 Starting HealthPredictor.py (Unix-like)..."
+    system("python3 #{python_file} &")
+  end
+end
+
 # API Keys
 OPENAQ_KEY = ENV['OPENAQ_API_KEY']
 NASA_TOKEN = ENV['NASA_EARTHDATA_TOKEN']
