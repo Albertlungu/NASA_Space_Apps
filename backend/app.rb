@@ -51,6 +51,37 @@ use Rack::Cors do
   end
 end
 
+# Auto-start the Python Flask Health Predictor
+def start_health_predictor
+  python_file = File.expand_path('HealthPredictor.py', __dir__)
+
+  unless File.exist?(python_file)
+    puts "⚠️  HealthPredictor.py not found at #{python_file}"
+    return
+  end
+
+  puts "🚀 Starting Python Health Predictor..."
+
+  python_cmd = Gem.win_platform? ? 'python' : 'python3'
+
+  begin
+    @python_pid = spawn(python_cmd, python_file, out: $stdout, err: $stderr)
+
+    at_exit do
+      if @python_pid
+        puts "🛑 Stopping Python Health Predictor..."
+        Process.kill("TERM", @python_pid) rescue nil
+      end
+    end
+  rescue Errno::ENOENT => e
+    puts "❌ Failed to start Python: #{e.message}"
+    puts "👉 Try running manually: #{python_cmd} #{python_file}"
+  end
+end
+
+# Call the function as part of app initialization
+start_health_predictor
+
 # API Keys
 OPENAQ_KEY = ENV['OPENAQ_API_KEY']
 NASA_TOKEN = ENV['NASA_EARTHDATA_TOKEN']
@@ -556,6 +587,22 @@ namespace '/api' do
     rescue => e
       status 500
       json({ status: 'error', message: e.message })
+    end
+  end
+
+  post '/predictions/ml' do
+    begin
+      response = HTTParty.post(
+        "http://localhost:5000/predict",
+        headers: { 'Content-Type' => 'application/json' },
+        body: request.body.read
+      )
+
+      status response.code
+      json response.parsed_response
+    rescue => e
+      status 500
+      json({ error: "ML Service unavailable", message: e.message })
     end
   end
 
