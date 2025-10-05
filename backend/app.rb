@@ -29,7 +29,7 @@ DB_ENABLED = begin
   
   # Load services
   require_relative 'services/notification_service'
-  require_relative 'services/pattern_analysis_service'
+  require_relative 'services/ml_predictor_service'
   
   puts "✓ Database connection established"
   true
@@ -222,7 +222,6 @@ get '/' do
       air_quality: '/api/air-quality',
       tempo: '/api/tempo',
       historical: '/api/historical',
-      pattern_insights: '/api/pattern-insights',
       predictions: '/api/predictions',
       users: '/api/users',
       alerts: '/api/alerts'
@@ -482,59 +481,45 @@ namespace '/api' do
     end
   end
 
-  # Get AI-powered pattern insights from historical data
-  get '/pattern-insights' do
+  # ML-based predictions
+  get '/predictions' do
     pollutant = params['pollutant'] || 'pm25'
     lat = params['lat']
     lon = params['lon']
-    days = (params['days'] || 7).to_i
+    hours_back = (params['hours_back'] || 48).to_i
+
+    unless lat && lon
+      return json({
+        status: 'error',
+        message: 'Latitude and longitude required'
+      })
+    end
 
     unless DB_ENABLED
       return json({
         status: 'error',
-        message: 'Pattern analysis requires database support'
+        message: 'Predictions require database support'
       })
     end
 
     begin
-      start_date = Time.now - (days * 24 * 60 * 60)
-      
-      readings = AirQualityReading
-        .where(pollutant: pollutant)
-        .where('measured_at >= ?', start_date)
-        .order(measured_at: :asc)
-
-      if lat && lon
-        readings = readings.where(
-          'latitude BETWEEN ? AND ? AND longitude BETWEEN ? AND ?',
-          lat.to_f - 0.5, lat.to_f + 0.5,
-          lon.to_f - 0.5, lon.to_f + 0.5
-        )
-      end
-
-      # Convert to format expected by pattern analysis
-      historical_data = readings.map do |r|
-        {
-          timestamp: r.measured_at.iso8601,
-          aqi: r.aqi,
-          value: r.value
-        }
-      end
-
-      # Run pattern analysis
-      analyzer = PatternAnalysisService.new(historical_data, pollutant)
-      analysis_result = analyzer.analyze
-
-      json({
-        status: 'ok',
+      predictor = MLPredictorService.new(
+        lat: lat.to_f,
+        lon: lon.to_f,
         pollutant: pollutant,
-        days: days,
-        data_points: historical_data.length,
-        analysis: analysis_result
-      })
+        hours_back: hours_back
+      )
+      
+      result = predictor.predict
+      
+      json(result)
     rescue => e
       status 500
-      json({ status: 'error', message: e.message, trace: e.backtrace.first(3) })
+      json({
+        status: 'error',
+        message: e.message,
+        trace: e.backtrace.first(5)
+      })
     end
   end
 
