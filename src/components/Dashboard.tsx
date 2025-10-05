@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useGeolocation } from "@/hooks/useGeolocation";
 import { useAirQuality, useTempoData } from "@/hooks/useAirQuality";
-import { getAQIColor, getLocationFromCoords, getCoordsFromLocation, getNearbyAQIStations } from "@/lib/api";
+import { getAQIColor, getLocationFromCoords, getCoordsFromLocation, getNearbyAQIStations, getWAQIDataByCoords } from "@/lib/api";
 
 const Dashboard = () => {
   // Geolocation and search state
@@ -36,6 +36,26 @@ const Dashboard = () => {
   const { data: tempoData } = useTempoData(activeLat, activeLon);
   
   const [aqiCardsData, setAqiCardsData] = useState([]);
+  const [waqiPollutants, setWaqiPollutants] = useState(null);
+  
+  // Fetch real WAQI pollutant data
+  useEffect(() => {
+    const fetchWAQIData = async () => {
+      if (!activeLat || !activeLon) return;
+      
+      const data = await getWAQIDataByCoords(
+        activeLat,
+        activeLon,
+        import.meta.env.VITE_AQI_TOKEN
+      );
+      
+      if (data) {
+        setWaqiPollutants(data);
+      }
+    };
+    
+    fetchWAQIData();
+  }, [activeLat, activeLon]);
   
   // Get location name for current coordinates
   useEffect(() => {
@@ -64,91 +84,78 @@ const Dashboard = () => {
     return R * c; // Distance in kilometers
   };
 
-  // Fetch nearby stations and prepare AQI cards
+  // Fetch nearby stations and prepare AQI cards using WAQI
   useEffect(() => {
     const fetchNearbyLocations = async () => {
-      if (!activeLat || !activeLon || !pm25Data?.results) return;
+      if (!activeLat || !activeLon) return;
       
-      // Get the main location reading (first result)
-      const mainReading = pm25Data.results[0];
+      // Fetch REAL WAQI data for main location
+      const mainWaqiData = await getWAQIDataByCoords(
+        activeLat,
+        activeLon,
+        import.meta.env.VITE_AQI_TOKEN
+      );
       
-      console.log('Main reading data:', mainReading); // Debug log
+      if (!mainWaqiData) return;
       
-      // Main location card
+      // Main location card with REAL WAQI data
       const mainCard = {
         location: currentLocationName,
-        aqi: mainReading?.aqi ?? 0,
+        aqi: mainWaqiData.aqi,
         pollutant: "PM2.5",
-        timestamp: mainReading?.date?.local 
-          ? new Date(mainReading.date.local).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
-          : mainReading?.date?.utc 
-          ? new Date(mainReading.date.utc).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
-          : "Live",
+        timestamp: "Live",
         isMain: true
       };
       
-      // Filter readings to only include those within 100km and skip the first one (main location)
-      const nearbyReadings = pm25Data.results.slice(1).filter(reading => {
-        if (!reading.coordinates) return false;
-        
-        const distance = calculateDistance(
-          activeLat,
-          activeLon,
-          reading.coordinates.latitude,
-          reading.coordinates.longitude
-        );
-        
-        // Only include stations within 100km
-        return distance <= 100;
-      });
+      // Fetch WAQI data for nearby locations (offset by ~50km in different directions)
+      const nearbyOffsets = [
+        { lat: 0.5, lon: 0, label: 'North' },
+        { lat: -0.5, lon: 0, label: 'South' },
+        { lat: 0, lon: 0.5, label: 'East' },
+        { lat: 0, lon: -0.5, label: 'West' }
+      ];
       
-      // Process nearby readings
-      const nearbyCardsWithDistance = await Promise.all(
-        nearbyReadings.map(async (reading) => {
-          const coords = reading.coordinates;
-          let locationLabel = 'Unknown Location';
-          
-          if (coords) {
-            const location = await getLocationFromCoords(coords.latitude, coords.longitude);
-            if (location) {
-              locationLabel = `${location.city}, ${location.country}`;
-            }
-          }
-          
-          const distance = calculateDistance(
-            activeLat,
-            activeLon,
-            coords.latitude,
-            coords.longitude
+      const nearbyCards = [];
+      
+      for (const offset of nearbyOffsets) {
+        const nearbyLat = activeLat + offset.lat;
+        const nearbyLon = activeLon + offset.lon;
+        
+        try {
+          const nearbyData = await getWAQIDataByCoords(
+            nearbyLat,
+            nearbyLon,
+            import.meta.env.VITE_AQI_TOKEN
           );
           
-          return {
-            location: locationLabel,
-            aqi: reading.aqi,
-            pollutant: "PM2.5",
-            timestamp: reading.date?.local 
-              ? new Date(reading.date.local).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
-              : "Live",
-            isMain: false,
-            distance: distance
-          };
-        })
-      );
+          if (nearbyData && nearbyData.station !== mainWaqiData.station) {
+            const location = await getLocationFromCoords(nearbyLat, nearbyLon);
+            const locationName = location ? `${location.city}, ${location.country}` : nearbyData.station;
+            
+            // Check if we already have this station
+            if (!nearbyCards.some(card => card.location === locationName)) {
+              nearbyCards.push({
+                location: locationName,
+                aqi: nearbyData.aqi,
+                pollutant: "PM2.5",
+                timestamp: "Live",
+                isMain: false
+              });
+            }
+          }
+        } catch (error) {
+          console.log(`Failed to fetch nearby data for ${offset.label}`);
+        }
+        
+        // Stop if we have 2 nearby stations
+        if (nearbyCards.length >= 2) break;
+      }
       
-      // Filter out duplicate city names and sort by distance
-      const uniqueNearbyCards = nearbyCardsWithDistance
-        .filter((card, index, self) => 
-          card.location !== currentLocationName &&
-          card.location !== 'Unknown Location' &&
-          self.findIndex(c => c.location === card.location) === index
-        )
-        .sort((a, b) => a.distance - b.distance);
-      
-      // If we have nearby cities, use them. Otherwise show message
-      if (uniqueNearbyCards.length > 0) {
-        setAqiCardsData([mainCard, ...uniqueNearbyCards.slice(0, 2)]);
+      // Set the cards data
+      if (nearbyCards.length > 0) {
+        setAqiCardsData([mainCard, ...nearbyCards.slice(0, 2)]);
       } else {
-        // No nearby cities found within 100km
+        // No nearby stations found
         setAqiCardsData([
           mainCard,
           { location: "No nearby monitoring stations", aqi: 0, pollutant: "PM2.5", timestamp: "N/A", isMain: false },
@@ -158,7 +165,7 @@ const Dashboard = () => {
     };
     
     fetchNearbyLocations();
-  }, [pm25Data, activeLat, activeLon, currentLocationName]);
+  }, [activeLat, activeLon, currentLocationName]);
   
   // Search handler
   const handleSearch = async () => {
@@ -197,18 +204,17 @@ const Dashboard = () => {
     }
   };
   
-  // Pollutant data with real values
+  // Pollutant data with REAL WAQI values
   const pollutantData = useMemo(() => {
-    console.log('Pollutant data sources:', { tempoData, pm25Data, no2Data, o3Data }); // Debug log
+    // Use WAQI data first, fallback to other sources
+    const pm25Value = waqiPollutants?.pm25 ?? tempoData?.data?.pm25?.value ?? pm25Data?.results?.[0]?.value;
+    const pm25Aqi = waqiPollutants?.aqi ?? tempoData?.data?.pm25?.aqi ?? pm25Data?.results?.[0]?.aqi ?? 0;
     
-    const pm25Value = tempoData?.data?.pm25?.value ?? pm25Data?.results?.[0]?.value;
-    const pm25Aqi = tempoData?.data?.pm25?.aqi ?? pm25Data?.results?.[0]?.aqi ?? 0;
+    const no2Value = waqiPollutants?.no2 ?? tempoData?.data?.no2?.value ?? no2Data?.results?.[0]?.value;
+    const no2Aqi = waqiPollutants?.aqi ?? tempoData?.data?.no2?.aqi ?? no2Data?.results?.[0]?.aqi ?? 0;
     
-    const no2Value = tempoData?.data?.no2?.value ?? no2Data?.results?.[0]?.value;
-    const no2Aqi = tempoData?.data?.no2?.aqi ?? no2Data?.results?.[0]?.aqi ?? 0;
-    
-    const o3Value = tempoData?.data?.o3?.value ?? o3Data?.results?.[0]?.value;
-    const o3Aqi = tempoData?.data?.o3?.aqi ?? o3Data?.results?.[0]?.aqi ?? 0;
+    const o3Value = waqiPollutants?.o3 ?? tempoData?.data?.o3?.value ?? o3Data?.results?.[0]?.value;
+    const o3Aqi = waqiPollutants?.aqi ?? tempoData?.data?.o3?.aqi ?? o3Data?.results?.[0]?.aqi ?? 0;
     
     const pollutants = [
       { 
@@ -247,13 +253,13 @@ const Dashboard = () => {
     
     console.log('Computed pollutant data:', pollutants); // Debug log
     return pollutants;
-  }, [tempoData, pm25Data, no2Data, o3Data]);
+  }, [waqiPollutants, tempoData, pm25Data, no2Data, o3Data]);
   
   // Loading placeholder cards (only 3 total)
   const loadingCards = [
     { location: "Loading your location...", aqi: 0, pollutant: "PM2.5", timestamp: "...", isMain: true },
     { location: "Finding nearby area 1...", aqi: 0, pollutant: "PM2.5", timestamp: "...", isMain: false },
-    { location: "Finding nearby area 2...", aqi: 0, pollutant: "PM2.5", timestamp: "...", isMain: false },
+    { location: "Finding nearby area 2...", aqi: 0, pollutant: "PM2.5", timestamp: "...", isMain: false }
   ];
 
   return (
