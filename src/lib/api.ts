@@ -291,6 +291,57 @@ export function getAQIRecommendation(aqi: number): string {
   return 'Stay indoors and keep windows closed';
 }
 
+export const getCoordsFromLocation = async (locationQuery: string) => {
+  try {
+    const response = await fetch(
+      `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(locationQuery)}&format=json&limit=1`,
+      {
+        headers: {
+          'User-Agent': 'NASA-TEMPO-Air-Quality-App' // Required by Nominatim
+        }
+      }
+    );
+    const data = await response.json();
+    
+    if (data && data.length > 0) {
+      return {
+        lat: parseFloat(data[0].lat),
+        lon: parseFloat(data[0].lon)
+      };
+    }
+    
+    return null;
+  } catch (error) {
+    console.error('Geocoding failed:', error);
+    return null;
+  }
+};
+
+export const getNearbyAQIStations = async (lat: number, lon: number, radius = 25000) => {
+  try {
+    // Use the existing API to get nearby stations
+    const response = await api.getPollutantData('pm25', lat, lon, radius, 5);
+    
+    if (response.status === 'success' && response.results) {
+      // Filter out the results to return only unique nearby stations
+      return response.results.map((reading: AirQualityReading) => ({
+        coordinates: reading.coordinates,
+        aqi: reading.aqi,
+        value: reading.value,
+        date: reading.date,
+        location: reading.location,
+        city: reading.city,
+        country: reading.country
+      }));
+    }
+    
+    return [];
+  } catch (error) {
+    console.error('Failed to fetch nearby AQI stations:', error);
+    return [];
+  }
+};
+
 export const getLocationFromCoords = async (lat: number, lon: number) => {
   try {
     const response = await fetch(
