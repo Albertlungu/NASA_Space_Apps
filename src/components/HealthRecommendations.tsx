@@ -19,14 +19,10 @@ import {
   Gauge,
   Target,
   School,
-  Building2,
-  Factory,
-  Sparkles,
-  ChevronDown,
-  ChevronUp
+  Building2,  Factory,  Sparkles,  ChevronDown,  ChevronUp
 } from "lucide-react";
 import { useGeolocation } from "@/hooks/useGeolocation";
-import { useAirQuality, useTempoData } from "@/hooks/useAirQuality";
+import { getWAQIDataByCoords } from '@/lib/api';
 
 // Evidence-based Health Risk Assessment Engine
 const HealthRiskEngine = {
@@ -245,8 +241,9 @@ const HealthRiskEngine = {
 
 const AdvancedHealthMonitor = () => {
   const { location, error: locationError } = useGeolocation();
-  const { data: pm25Data, isLoading: pm25Loading } = useAirQuality(location?.lat, location?.lon, 'pm25');
-  const { data: tempoData, isLoading: tempoLoading } = useTempoData(location?.lat, location?.lon);
+    
+  const [waqiData, setWaqiData] = useState(null);
+  const [isLoading, setIsLoading] = useState(false);
   
   const [isTracking, setIsTracking] = useState(false);
   const [exposureHistory, setExposureHistory] = useState([]);
@@ -281,28 +278,46 @@ const AdvancedHealthMonitor = () => {
   const trackingIntervalRef = useRef(null);
   const lastLocationRef = useRef(null);
 
-  // Extract current AQI from API data
+  // Fetch WAQI data for current location
   useEffect(() => {
-    if (tempoData?.data?.pm25?.aqi) {
-      setCurrentAQI(tempoData.data.pm25.aqi);
-    } else if (pm25Data?.results?.[0]?.aqi) {
-      setCurrentAQI(pm25Data.results[0].aqi);
-    }
-  }, [tempoData, pm25Data]);
+    const fetchWAQIData = async () => {
+      if (!location?.lat || !location?.lon) return;
+      
+      setIsLoading(true);
+      try {
+        const data = await getWAQIDataByCoords(
+          location.lat,
+          location.lon,
+          import.meta.env.VITE_AQI_TOKEN
+        );
+        
+        if (data?.aqi) {
+          setWaqiData(data);
+          setCurrentAQI(data.aqi);
+        }
+      } catch (error) {
+        console.error('Failed to fetch WAQI data:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    
+    fetchWAQIData();
+  }, [location?.lat, location?.lon]);
 
   // Autofill ML inputs from current data
   useEffect(() => {
-    if (currentAQI && pm25Data && tempoData) {
+    if (currentAQI && waqiData) {
       setMLInputs(prev => ({
         ...prev,
         AQI: currentAQI.toString(),
-        PM2_5: pm25Data.results?.[0]?.value?.toString() || prev.PM2_5,
-        NO2: tempoData.data?.no2?.value?.toString() || prev.NO2,
-        O3: tempoData.data?.o3?.value?.toString() || prev.O3,
-        SO2: tempoData.data?.so2?.value?.toString() || prev.SO2
+        PM2_5: waqiData?.pm25?.toString() || prev.PM2_5,
+        NO2: waqiData.no2?.toString() || prev.NO2,
+        O3: waqiData.o3?.toString() || prev.O3,
+        SO2: prev.SO2 // WAQI does not provide SO2
       }));
     }
-  }, [currentAQI, pm25Data, tempoData]);
+    }, [currentAQI, waqiData]);
 
   // Track exposure
   useEffect(() => {
@@ -325,9 +340,9 @@ const AdvancedHealthMonitor = () => {
             lon: location.lon,
             aqi: currentAQI,
             duration: 0.5,
-            pm25: pm25Data?.results?.[0]?.value || null,
-            no2: tempoData?.data?.no2?.value || null,
-            o3: tempoData?.data?.o3?.value || null
+            pm25: waqiData?.pm25 || null,
+            no2: waqiData?.no2 || null,
+            o3: waqiData?.o3 || null
           }
         ]);
         lastLocationRef.current = { lat: location.lat, lon: location.lon };
@@ -340,7 +355,7 @@ const AdvancedHealthMonitor = () => {
     return () => {
       if (trackingIntervalRef.current) clearInterval(trackingIntervalRef.current);
     };
-  }, [isTracking, location, currentAQI, pm25Data, tempoData]);
+  }, [isTracking, location, currentAQI, waqiData]);
 
   // Calculate health metrics
   useEffect(() => {
@@ -447,7 +462,7 @@ const AdvancedHealthMonitor = () => {
     return colors[level] || 'bg-muted/10 border-muted/30';
   };
 
-  const isLoading = pm25Loading || tempoLoading;
+  // isLoading is now managed in state
 
   return (
     <div className="space-y-6 p-6 max-w-7xl mx-auto">
@@ -577,9 +592,9 @@ const AdvancedHealthMonitor = () => {
                     <span className="text-muted-foreground">Position:</span>
                     <span className="font-mono">{location.lat.toFixed(6)}, {location.lon.toFixed(6)}</span>
                   </div>
-                  {pm25Data?.results?.[0]?.location && (
+                  {waqiData?.station && (
                     <span className="text-muted-foreground">
-                      Station: {pm25Data.results[0].location}
+                      Station: {waqiData.station}
                     </span>
                   )}
                 </div>
