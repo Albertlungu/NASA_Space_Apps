@@ -72,13 +72,17 @@ const Dashboard = () => {
       // Get the main location reading (first result)
       const mainReading = pm25Data.results[0];
       
+      console.log('Main reading data:', mainReading); // Debug log
+      
       // Main location card
       const mainCard = {
         location: currentLocationName,
-        aqi: mainReading?.aqi || 0,
+        aqi: mainReading?.aqi ?? 0,
         pollutant: "PM2.5",
         timestamp: mainReading?.date?.local 
           ? new Date(mainReading.date.local).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+          : mainReading?.date?.utc 
+          ? new Date(mainReading.date.utc).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
           : "Live",
         isMain: true
       };
@@ -195,45 +199,54 @@ const Dashboard = () => {
   
   // Pollutant data with real values
   const pollutantData = useMemo(() => {
-    const pm25Value = tempoData?.data?.pm25?.value || pm25Data?.results?.[0]?.value;
-    const pm25Aqi = tempoData?.data?.pm25?.aqi || pm25Data?.results?.[0]?.aqi || 0;
+    console.log('Pollutant data sources:', { tempoData, pm25Data, no2Data, o3Data }); // Debug log
     
-    const no2Value = tempoData?.data?.no2?.value || no2Data?.results?.[0]?.value;
-    const no2Aqi = tempoData?.data?.no2?.aqi || no2Data?.results?.[0]?.aqi || 0;
+    const pm25Value = tempoData?.data?.pm25?.value ?? pm25Data?.results?.[0]?.value;
+    const pm25Aqi = tempoData?.data?.pm25?.aqi ?? pm25Data?.results?.[0]?.aqi ?? 0;
     
-    const o3Value = tempoData?.data?.o3?.value || o3Data?.results?.[0]?.value;
-    const o3Aqi = tempoData?.data?.o3?.aqi || o3Data?.results?.[0]?.aqi || 0;
+    const no2Value = tempoData?.data?.no2?.value ?? no2Data?.results?.[0]?.value;
+    const no2Aqi = tempoData?.data?.no2?.aqi ?? no2Data?.results?.[0]?.aqi ?? 0;
     
-    return [
+    const o3Value = tempoData?.data?.o3?.value ?? o3Data?.results?.[0]?.value;
+    const o3Aqi = tempoData?.data?.o3?.aqi ?? o3Data?.results?.[0]?.aqi ?? 0;
+    
+    const pollutants = [
       { 
         name: "PM2.5", 
-        value: pm25Value !== undefined ? pm25Value.toFixed(1) : 'N/A',
+        value: pm25Value !== undefined && pm25Value !== null ? pm25Value.toFixed(1) : 'N/A',
         unit: "µg/m³", 
         icon: Droplets, 
-        color: pm25Aqi ? `text-[${getAQIColor(pm25Aqi)}]` : "text-gray-400"
+        color: pm25Aqi > 0 ? getAQIColor(pm25Aqi) : "#9ca3af",
+        aqi: pm25Aqi
       },
       { 
         name: "NO2", 
-        value: no2Value !== undefined ? no2Value.toFixed(1) : 'N/A',
+        value: no2Value !== undefined && no2Value !== null ? no2Value.toFixed(1) : 'N/A',
         unit: "ppb", 
         icon: Activity, 
-        color: no2Aqi ? `text-[${getAQIColor(no2Aqi)}]` : "text-gray-400"
+        color: no2Aqi > 0 ? getAQIColor(no2Aqi) : "#9ca3af",
+        aqi: no2Aqi
       },
       { 
         name: "O3", 
-        value: o3Value !== undefined ? o3Value.toFixed(1) : 'N/A',
+        value: o3Value !== undefined && o3Value !== null ? o3Value.toFixed(1) : 'N/A',
         unit: "ppb", 
         icon: TrendingUp, 
-        color: o3Aqi ? `text-[${getAQIColor(o3Aqi)}]` : "text-gray-400"
+        color: o3Aqi > 0 ? getAQIColor(o3Aqi) : "#9ca3af",
+        aqi: o3Aqi
       },
       { 
         name: "PM10", 
         value: 'N/A',
         unit: "µg/m³", 
         icon: Wind, 
-        color: "text-gray-400"
+        color: "#9ca3af",
+        aqi: 0
       },
     ];
+    
+    console.log('Computed pollutant data:', pollutants); // Debug log
+    return pollutants;
   }, [tempoData, pm25Data, no2Data, o3Data]);
   
   // Loading placeholder cards (only 3 total)
@@ -316,7 +329,7 @@ const Dashboard = () => {
             {pollutantData.map((pollutant, idx) => (
               <Card key={idx} className="p-6 glass-effect shadow-md hover:shadow-lg transition-all">
                 <div className="flex items-start justify-between mb-3">
-                  <pollutant.icon className={`w-8 h-8 ${pollutant.color}`} />
+                  <pollutant.icon className="w-8 h-8" style={{ color: pollutant.color }} />
                 </div>
                 <div className="text-2xl font-bold mb-1">{pollutant.value}</div>
                 <div className="text-sm text-muted-foreground">{pollutant.unit}</div>
