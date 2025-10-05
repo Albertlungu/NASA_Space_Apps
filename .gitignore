@@ -36,3 +36,6 @@ __pycache__/
 *.njsproj
 *.sln
 *.sw?
+# SQLite Database Files
+*.sqlite3-shm
+*.sqlite3-wal
