@@ -23,7 +23,6 @@ const RANKED_CITIES = [
   { name: "Cairo", lat: 30.0444, lon: 31.2357, country: "Egypt", flag: "🇪🇬" },
   { name: "Mumbai", lat: 19.0760, lon: 72.8777, country: "India", flag: "🇮🇳" },
 ];
-
 type OverlayLegendConfig = {
   title: string;
   stops: Array<{ color: string; position: number }>;
@@ -140,6 +139,20 @@ const MapView = () => {
   const rankedCities = useMemo(() => {
     return Object.values(cityDataMap).filter((c: any) => c.aqi > 0).sort((a: any, b: any) => b.aqi - a.aqi);
   }, [cityDataMap]);
+
+  const legendConfig = useMemo(() => {
+    if (overlayType === 'temperature' || overlayType === 'wind') {
+      return OVERLAY_LEGENDS[overlayType];
+    }
+    return null;
+  }, [overlayType]);
+
+  const legendGradient = useMemo(() => {
+    if (!legendConfig) return '';
+    return `linear-gradient(to right, ${legendConfig.stops
+      .map(stop => `${stop.color} ${stop.position}%`)
+      .join(', ')})`;
+  }, [legendConfig]);
   
   // Create GeoJSON for heat map visualization
   const heatmapData = useMemo(() => {
@@ -323,33 +336,36 @@ const MapView = () => {
   // Fetch temperature grid data when temperature overlay is active
   useEffect(() => {
     if (overlayType !== 'temperature' || !mapRef.current) return;
-    
+
     const fetchTemperatureData = async () => {
+      const map = mapRef.current?.getMap();
+      if (!map) return;
+
+      if (!map.loaded()) {
+        map.once('idle', fetchTemperatureData);
+        return;
+      }
+
       try {
-        const map = mapRef.current.getMap();
-        if (!map || !map.loaded()) return;
-        
         const bounds = map.getBounds();
-        
+
         const data = await api.getTemperatureGrid({
           north: bounds.getNorth(),
           south: bounds.getSouth(),
           east: bounds.getEast(),
           west: bounds.getWest()
         });
-        
+
         if (data.status === 'ok' && data.grid) {
           setTemperatureData(data.grid);
         }
       } catch (error) {
-        // Silently fail if backend not ready
         console.log('Temperature data not available yet');
       }
     };
-    
-    // Wait for map to be ready, then fetch once
+
     const timer = setTimeout(fetchTemperatureData, 1500);
-    
+
     return () => {
       clearTimeout(timer);
     };
@@ -361,8 +377,13 @@ const MapView = () => {
     
     const fetchWindData = async () => {
       try {
-        const map = mapRef.current.getMap();
-        if (!map || !map.loaded()) return;
+        const map = mapRef.current?.getMap();
+        if (!map) return;
+
+        if (!map.loaded()) {
+          map.once('idle', fetchWindData);
+          return;
+        }
         
         const bounds = map.getBounds();
         const north = bounds.getNorth();
@@ -804,7 +825,20 @@ const MapView = () => {
               </Popup>
             )}
           </Map>
-          
+          {legendConfig && (
+            <div className="pointer-events-none absolute bottom-5 left-1/2 -translate-x-1/2 bg-black/70 backdrop-blur-md rounded-xl px-5 py-4 text-white z-10 w-[360px] max-w-[90%] shadow-lg">
+              <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-wider mb-2">
+                <span>{legendConfig.title}</span>
+                <span>{viewMode === '3d' ? '3D View' : '2D View'}</span>
+              </div>
+              <div className="h-3 rounded-full mb-2" style={{ background: legendGradient }} />
+              <div className="flex justify-between text-[10px] text-white/80">
+                {legendConfig.labels.map((label) => (
+                  <span key={label}>{label}</span>
+                ))}
+              </div>
+            </div>
+          )}
           {/* Wind Particles Animation Overlay */}
           {overlayType === 'wind' && viewMode === '2d' && windData.length > 0 && mapRef.current && (
             <WindParticles
