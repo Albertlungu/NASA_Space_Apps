@@ -6,7 +6,6 @@
 # Environments and Secrets (CRITICAL)
 # Ignore all .env files and the specific local files you created
 .env
-.env.local
 .env.*
 backend/.env
 backend/.env.local
