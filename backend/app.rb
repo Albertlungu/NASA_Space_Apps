@@ -29,6 +29,7 @@ DB_ENABLED = begin
   
   # Load services
   require_relative 'services/notification_service'
+  require_relative 'services/ml_predictor_service'
   
   puts "✓ Database connection established"
   true
@@ -511,6 +512,48 @@ namespace '/api' do
     end
   end
 
+  # ML-based predictions
+  get '/predictions' do
+    pollutant = params['pollutant'] || 'pm25'
+    lat = params['lat']
+    lon = params['lon']
+    hours_back = (params['hours_back'] || 48).to_i
+
+    unless lat && lon
+      return json({
+        status: 'error',
+        message: 'Latitude and longitude required'
+      })
+    end
+
+    unless DB_ENABLED
+      return json({
+        status: 'error',
+        message: 'Predictions require database support'
+      })
+    end
+
+    begin
+      predictor = MLPredictorService.new(
+        lat: lat.to_f,
+        lon: lon.to_f,
+        pollutant: pollutant,
+        hours_back: hours_back
+      )
+      
+      result = predictor.predict
+      
+      json(result)
+    rescue => e
+      status 500
+      json({
+        status: 'error',
+        message: e.message,
+        trace: e.backtrace.first(5)
+      })
+    end
+  end
+
   # Get weather data
   get '/weather' do
     lat = params['lat']
@@ -541,6 +584,62 @@ namespace '/api' do
           description: data['weather'].first['description'],
           icon: data['weather'].first['icon']
         }
+      })
+    rescue => e
+      status 500
+      json({ status: 'error', message: e.message })
+    end
+  end
+
+  # Get temperature grid data for map overlay
+  get '/weather/grid' do
+    north = params['north'].to_f
+    south = params['south'].to_f
+    east = params['east'].to_f
+    west = params['west'].to_f
+
+    begin
+      # Create a dense grid of temperature points across the visible area
+      lat_step = (north - south) / 15.0 # 15x15 grid for smooth coverage
+      lon_step = (east - west) / 15.0
+      
+      grid_data = []
+      
+      (0..15).each do |i|
+        (0..15).each do |j|
+          lat = south + (i * lat_step)
+          lon = west + (j * lon_step)
+          
+          begin
+            url = "https://api.openweathermap.org/data/2.5/weather"
+            response = HTTParty.get(url,
+              query: {
+                lat: lat,
+                lon: lon,
+                appid: WEATHER_API_KEY,
+                units: 'metric'
+              },
+              timeout: 2
+            )
+            
+            data = response.parsed_response
+            if data['main']
+              grid_data << {
+                lat: lat,
+                lon: lon,
+                temperature: data['main']['temp']
+              }
+            end
+          rescue
+            # Skip failed points
+            next
+          end
+        end
+      end
+      
+      json({
+        status: 'ok',
+        grid: grid_data
       })
     rescue => e
       status 500

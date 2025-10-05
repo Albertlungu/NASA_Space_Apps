@@ -9,6 +9,7 @@ import { getAQIColor, getAQILevel } from "@/lib/api";
 import Map, { Marker, Popup, NavigationControl, ScaleControl, Source, Layer } from 'react-map-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import { api } from "@/lib/api";
+import { WindParticles } from './WindParticles';
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN;
 
@@ -22,6 +23,40 @@ const RANKED_CITIES = [
   { name: "Cairo", lat: 30.0444, lon: 31.2357, country: "Egypt", flag: "🇪🇬" },
   { name: "Mumbai", lat: 19.0760, lon: 72.8777, country: "India", flag: "🇮🇳" },
 ];
+type OverlayLegendConfig = {
+  title: string;
+  stops: Array<{ color: string; position: number }>;
+  labels: string[];
+};
+
+const OVERLAY_LEGENDS: Record<'temperature' | 'wind', OverlayLegendConfig> = {
+  temperature: {
+    title: 'Temperature (°C)',
+    stops: [
+      { color: '#0B1D51', position: 0 },
+      { color: '#1464B4', position: 16 },
+      { color: '#1E9BFF', position: 32 },
+      { color: '#40E0D0', position: 48 },
+      { color: '#F5D300', position: 64 },
+      { color: '#FF8C00', position: 80 },
+      { color: '#FF4000', position: 90 },
+      { color: '#7F0000', position: 100 }
+    ],
+    labels: ['-40', '-20', '0', '10', '20', '30', '40', '50']
+  },
+  wind: {
+    title: 'Wind Speed (m/s)',
+    stops: [
+      { color: '#F1FCFF', position: 0 },
+      { color: '#A8E8FF', position: 20 },
+      { color: '#68C7FF', position: 40 },
+      { color: '#3994FF', position: 60 },
+      { color: '#784CFF', position: 80 },
+      { color: '#FF2F92', position: 100 }
+    ],
+    labels: ['0', '10', '20', '30', '40', '50']
+  }
+};
 
 const MapView = () => {
   const [opacity, setOpacity] = useState([70]);
@@ -43,6 +78,15 @@ const MapView = () => {
   const mapRef = useRef<any>(null);
   const [mapError, setMapError] = useState<string | null>(null);
   const [isMapLoading, setIsMapLoading] = useState(true);
+  const [temperatureData, setTemperatureData] = useState<any[]>([]);
+  const [windData, setWindData] = useState<Array<{ lat: number; lon: number; speed: number; direction: number }>>([]);
+  const [windDataTimestamp, setWindDataTimestamp] = useState(Date.now());
+  // Get yesterday's date for NASA GIBS (today's data not available yet)
+  const gibsDate = useMemo(() => {
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    return yesterday.toISOString().split('T')[0];
+  }, []);
   
   const { location } = useGeolocation();
   
@@ -95,6 +139,20 @@ const MapView = () => {
   const rankedCities = useMemo(() => {
     return Object.values(cityDataMap).filter((c: any) => c.aqi > 0).sort((a: any, b: any) => b.aqi - a.aqi);
   }, [cityDataMap]);
+
+  const legendConfig = useMemo(() => {
+    if (overlayType === 'temperature' || overlayType === 'wind') {
+      return OVERLAY_LEGENDS[overlayType];
+    }
+    return null;
+  }, [overlayType]);
+
+  const legendGradient = useMemo(() => {
+    if (!legendConfig) return '';
+    return `linear-gradient(to right, ${legendConfig.stops
+      .map(stop => `${stop.color} ${stop.position}%`)
+      .join(', ')})`;
+  }, [legendConfig]);
   
   // Create GeoJSON for heat map visualization
   const heatmapData = useMemo(() => {
@@ -274,26 +332,116 @@ const MapView = () => {
     return () => clearTimeout(timer);
   }, [viewMode]);
 
-  // Apply fog effect in 3D mode after map loads
+
+  // Fetch temperature grid data when temperature overlay is active
   useEffect(() => {
-    if (!mapRef.current || viewMode !== '3d') return;
-    
-    try {
-      const map = mapRef.current.getMap();
-      if (map && map.loaded()) {
-        map.setFog({
-          range: [0.5, 10],
-          color: '#1a1f3a',
-          'horizon-blend': 0.3,
-          'high-color': '#1e3a8a',
-          'space-color': '#0a0e1a',
-          'star-intensity': 0.25
-        });
+    if (overlayType !== 'temperature' || !mapRef.current) return;
+
+    const fetchTemperatureData = async () => {
+      const map = mapRef.current?.getMap();
+      if (!map) return;
+
+      if (!map.loaded()) {
+        map.once('idle', fetchTemperatureData);
+        return;
       }
-    } catch (error) {
-      console.error('Error setting fog:', error);
-    }
-  }, [viewMode]);
+
+      try {
+        const bounds = map.getBounds();
+
+        const data = await api.getTemperatureGrid({
+          north: bounds.getNorth(),
+          south: bounds.getSouth(),
+          east: bounds.getEast(),
+          west: bounds.getWest()
+        });
+
+        if (data.status === 'ok' && data.grid) {
+          setTemperatureData(data.grid);
+        }
+      } catch (error) {
+        console.log('Temperature data not available yet');
+      }
+    };
+
+    const timer = setTimeout(fetchTemperatureData, 1500);
+
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [overlayType]);
+
+  // Fetch wind data for particle animation (2D only)
+  useEffect(() => {
+    if (overlayType !== 'wind' || viewMode !== '2d' || !mapRef.current) return;
+    
+    const fetchWindData = async () => {
+      try {
+        const map = mapRef.current?.getMap();
+        if (!map) return;
+
+        if (!map.loaded()) {
+          map.once('idle', fetchWindData);
+          return;
+        }
+        
+        const bounds = map.getBounds();
+        const north = bounds.getNorth();
+        const south = bounds.getSouth();
+        const east = bounds.getEast();
+        const west = bounds.getWest();
+        
+        // Create a grid of points to fetch wind data
+        const latStep = (north - south) / 8;
+        const lonStep = (east - west) / 8;
+        
+        const promises = [];
+        for (let i = 0; i <= 8; i++) {
+          for (let j = 0; j <= 8; j++) {
+            let lat = south + (i * latStep);
+            let lon = west + (j * lonStep);
+            
+            // Normalize coordinates to valid ranges
+            lat = Math.max(-85, Math.min(85, lat)); // Lat must be -85 to 85
+            // Normalize lon to -180 to 180
+            while (lon > 180) lon -= 360;
+            while (lon < -180) lon += 360;
+            
+            promises.push(
+              fetch(`https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=c8e28a232f71b820576f88f0599c8a09`)
+                .then(res => res.json())
+                .then(data => ({
+                  lat,
+                  lon,
+                  speed: data.wind?.speed || 0,
+                  direction: data.wind?.deg || 0
+                }))
+                .catch(() => ({ lat, lon, speed: 0, direction: 0 }))
+            );
+          }
+        }
+        
+        const results = await Promise.all(promises);
+        setWindData(results);
+        setWindDataTimestamp(Date.now()); // Update timestamp to force particle recreation
+      } catch (error) {
+        console.log('Wind data not available');
+      }
+    };
+    
+    fetchWindData();
+    
+    // Refetch when map moves/zooms
+    const map = mapRef.current.getMap();
+    const handleMoveEnd = () => {
+      if (overlayType === 'wind') fetchWindData();
+    };
+    map.on('moveend', handleMoveEnd);
+
+    return () => {
+      map.off('moveend', handleMoveEnd);
+    };
+  }, [overlayType, viewMode]);
 
   // Handle map click
   const handleMapClick = (event: any) => {
@@ -307,6 +455,25 @@ const MapView = () => {
   };
 
   const currentTime = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+
+  // Create GeoJSON from temperature data
+  const temperatureGeoJSON = useMemo(() => {
+    return {
+      type: 'FeatureCollection' as const,
+      features: temperatureData.map((point: any) => ({
+        type: 'Feature' as const,
+        geometry: {
+          type: 'Point' as const,
+          coordinates: [point.lon, point.lat]
+        },
+        properties: {
+          temperature: point.temperature,
+          // Normalize temperature for heatmap weight (-20°C to 45°C range)
+          weight: Math.max(0, Math.min(1, (point.temperature + 20) / 65))
+        }
+      }))
+    };
+  }, [temperatureData]);
 
   // Check if MapBox token is configured
   if (!MAPBOX_TOKEN) {
@@ -448,13 +615,13 @@ const MapView = () => {
             key={viewMode}
             ref={mapRef}
             {...viewState}
-            projection={viewMode === '3d' ? 'globe' : 'mercator'}
+            projection={(viewMode === '3d' ? { name: 'globe' } : { name: 'mercator' }) as any}
             onMove={evt => setViewState(evt.viewState)}
             onClick={handleMapClick}
             onLoad={() => {
               console.log('Map loaded in mode:', viewMode);
               setIsMapLoading(false);
-              // Apply fog only in 3D mode
+              // Apply fog only for 3D
               if (mapRef.current && viewMode === '3d') {
                 const map = mapRef.current.getMap();
                 map.setFog({
@@ -481,53 +648,53 @@ const MapView = () => {
             
             {/* Overlay layers - Pollution Heat map */}
             {overlayType === 'pollution' && heatmapData.features.length > 0 && (
-              <Source type="geojson" data={heatmapData}>
+              <Source id="pollution-source" type="geojson" data={heatmapData}>
                 <Layer {...heatmapLayer} />
                 <Layer {...circleLayer} />
               </Source>
             )}
             
-            {/* Temperature Overlay - simulated with color gradient */}
-            {overlayType === 'temperature' && heatmapData.features.length > 0 && (
-              <Source type="geojson" data={heatmapData}>
+            {/* Temperature Overlay - OpenWeatherMap temperature tiles */}
+            {overlayType === 'temperature' && (
+              <Source
+                id="temperature-source"
+                type="raster"
+                tiles={[
+                  `https://tile.openweathermap.org/map/temp_new/{z}/{x}/{y}.png?appid=c8e28a232f71b820576f88f0599c8a09`
+                ]}
+                tileSize={256}
+                minzoom={0}
+                maxzoom={10}
+              >
                 <Layer
-                  id="temperature-heatmap"
-                  type="heatmap"
+                  id="temperature-layer"
+                  type="raster"
                   paint={{
-                    'heatmap-weight': 1,
-                    'heatmap-intensity': ['interpolate', ['linear'], ['zoom'], 0, 1, 9, 3] as any,
-                    'heatmap-color': [
-                      'interpolate',
-                      ['linear'],
-                      ['heatmap-density'],
-                      0, 'rgba(0, 0, 255, 0)',
-                      0.2, 'rgb(0, 100, 255)',
-                      0.4, 'rgb(0, 200, 255)',
-                      0.6, 'rgb(255, 255, 0)',
-                      0.8, 'rgb(255, 150, 0)',
-                      1, 'rgb(255, 0, 0)'
-                    ] as any,
-                    'heatmap-radius': ['interpolate', ['linear'], ['zoom'], 0, 30, 9, 60] as any,
-                    'heatmap-opacity': opacity[0] / 100
+                    'raster-opacity': opacity[0] / 100,
+                    'raster-fade-duration': 300
                   }}
                 />
               </Source>
             )}
             
-            {/* Wind Flow Overlay - animated wind patterns */}
-            {overlayType === 'wind' && heatmapData.features.length > 0 && (
-              <Source type="geojson" data={heatmapData}>
+            {/* Wind Overlay - OpenWeatherMap wind speed tiles */}
+            {overlayType === 'wind' && (
+              <Source
+                id="wind-source"
+                type="raster"
+                tiles={[
+                  `https://tile.openweathermap.org/map/wind_new/{z}/{x}/{y}.png?appid=c8e28a232f71b820576f88f0599c8a09`
+                ]}
+                tileSize={256}
+                minzoom={0}
+                maxzoom={10}
+              >
                 <Layer
-                  id="wind-flow"
-                  type="circle"
+                  id="wind-layer"
+                  type="raster"
                   paint={{
-                    'circle-radius': ['interpolate', ['linear'], ['zoom'], 0, 15, 9, 30] as any,
-                    'circle-color': '#00ff88',
-                    'circle-opacity': 0.3,
-                    'circle-blur': 1,
-                    'circle-stroke-width': 1,
-                    'circle-stroke-color': '#00ff88',
-                    'circle-stroke-opacity': 0.6
+                    'raster-opacity': opacity[0] / 100 * 0.7,
+                    'raster-fade-duration': 300
                   }}
                 />
               </Source>
@@ -658,6 +825,36 @@ const MapView = () => {
               </Popup>
             )}
           </Map>
+          {legendConfig && (
+            <div className="pointer-events-none absolute bottom-5 left-1/2 -translate-x-1/2 bg-black/70 backdrop-blur-md rounded-xl px-5 py-4 text-white z-10 w-[360px] max-w-[90%] shadow-lg">
+              <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-wider mb-2">
+                <span>{legendConfig.title}</span>
+                <span>{viewMode === '3d' ? '3D View' : '2D View'}</span>
+              </div>
+              <div className="h-3 rounded-full mb-2" style={{ background: legendGradient }} />
+              <div className="flex justify-between text-[10px] text-white/80">
+                {legendConfig.labels.map((label) => (
+                  <span key={label}>{label}</span>
+                ))}
+              </div>
+            </div>
+          )}
+          {/* Wind Particles Animation Overlay */}
+          {overlayType === 'wind' && viewMode === '2d' && windData.length > 0 && mapRef.current && (
+            <WindParticles
+              key={`wind-${windDataTimestamp}`}
+              windData={windData}
+              bounds={{
+                north: mapRef.current.getMap().getBounds().getNorth(),
+                south: mapRef.current.getMap().getBounds().getSouth(),
+                east: mapRef.current.getMap().getBounds().getEast(),
+                west: mapRef.current.getMap().getBounds().getWest()
+              }}
+              zoom={viewState.zoom}
+              opacity={opacity[0] / 100}
+              viewMode={viewMode}
+            />
+          )}
           
           {/* Loading indicator */}
           {isMapLoading && (

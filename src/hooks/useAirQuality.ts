@@ -89,3 +89,4 @@ export function useTempoData(lat: number | undefined, lon: number | undefined) {
     staleTime: 10 * 60 * 1000,
   });
 }
+
