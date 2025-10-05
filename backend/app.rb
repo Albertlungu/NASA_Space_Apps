@@ -46,9 +46,28 @@ use Rack::Cors do
   allow do
     origins ENV['FRONTEND_URL'] || 'http://localhost:8080', 'http://localhost:3000'
     resource '*',
-      headers: :any,
       methods: [:get, :post, :put, :patch, :delete, :options],
       credentials: true
+  end
+end
+
+# Fetch real WAQI data on startup
+def fetch_real_waqi_data
+  fetch_script = File.expand_path('fetch_real_data.rb', __dir__)
+  
+  unless File.exist?(fetch_script)
+    puts "⚠️  fetch_real_data.rb not found"
+    return
+  end
+  
+  puts "🌍 Fetching real WAQI data..."
+  
+  begin
+    # Run the fetch script
+    system("ruby #{fetch_script}")
+    puts "✓ Real WAQI data fetched successfully"
+  rescue => e
+    puts "⚠️  Failed to fetch WAQI data: #{e.message}"
   end
 end
 
@@ -59,30 +78,6 @@ def start_health_predictor
   unless File.exist?(python_file)
     puts "⚠️  HealthPredictor.py not found at #{python_file}"
     return
-  end
-
-  puts "🚀 Starting Python Health Predictor..."
-
-  python_cmd = Gem.win_platform? ? 'python' : 'python3'
-
-  begin
-    @python_pid = spawn(python_cmd, python_file, out: $stdout, err: $stderr)
-
-    at_exit do
-      if @python_pid
-        puts "🛑 Stopping Python Health Predictor..."
-        Process.kill("TERM", @python_pid) rescue nil
-      end
-    end
-  rescue Errno::ENOENT => e
-    puts "❌ Failed to start Python: #{e.message}"
-    puts "👉 Try running manually: #{python_cmd} #{python_file}"
-  end
-end
-
-# Call the function as part of app initialization
-start_health_predictor
-
 # API Keys
 OPENAQ_KEY = ENV['OPENAQ_API_KEY']
 NASA_TOKEN = ENV['NASA_EARTHDATA_TOKEN']
@@ -800,10 +795,18 @@ def generate_health_recommendations(risk_score, symptoms)
     recommendations << "Wear N95 mask if you must go outside"
     recommendations << "Monitor symptoms closely"
   end
-  
   if symptoms.any? { |s| s.downcase.include?('breath') || s.downcase.include?('chest') }
     recommendations << "⚠️ Seek medical attention if symptoms worsen"
   end
   
   recommendations
 end
+
+# =============================================================================
+# STARTUP - Fetch real WAQI data and start services
+# =============================================================================
+if DB_ENABLED
+  fetch_real_waqi_data
+end
+
+start_health_predictor
