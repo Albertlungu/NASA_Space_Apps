@@ -342,6 +342,32 @@ export const getNearbyAQIStations = async (lat: number, lon: number, radius = 25
   }
 };
 
+// Fetch real-time AQI data from WAQI using coordinates
+export const getWAQIDataByCoords = async (lat: number, lon: number, token: string) => {
+  try {
+    const response = await fetch(
+      `https://api.waqi.info/feed/geo:${lat};${lon}/?token=${token}`
+    );
+    const data = await response.json();
+    
+    if (data.status === 'ok' && data.data) {
+      return {
+        aqi: data.data.aqi,
+        pm25: data.data.iaqi?.pm25?.v,
+        no2: data.data.iaqi?.no2?.v,
+        o3: data.data.iaqi?.o3?.v,
+        station: data.data.city?.name,
+        coordinates: data.data.city?.geo
+      };
+    }
+    
+    return null;
+  } catch (error) {
+    console.error('Failed to fetch WAQI data:', error);
+    return null;
+  }
+};
+
 export const getLocationFromCoords = async (lat: number, lon: number) => {
   try {
     const response = await fetch(
