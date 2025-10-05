@@ -1,11 +1,3 @@
-"""
-HealthPredictor.py - Backend API for AQI Health Impact Prediction
-Place this file in: backend/HealthPredictor.py
-Place HealthPredict.sav and HealthScaler.sav in the same backend/ directory
-
-Run with: python HealthPredictor.py
-"""
-
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import pickle
@@ -17,8 +9,8 @@ app = Flask(__name__)
 CORS(app)  # Enable CORS for frontend communication
 
 # Configuration
-MODEL_PATH = 'HealthPredict.sav'
-SCALER_PATH = 'HealthScaler.sav' # <-- NEW: Path for the saved scaler
+MODEL_PATH = 'health_model/HealthPredict.sav'
+SCALER_PATH = 'health_model/HealthScaler.sav' 
 
 # --- Load the trained model ---
 try:
@@ -52,9 +44,7 @@ except Exception as e:
 FEATURE_NAMES = [
     'AQI', 'PM10', 'PM2_5', 'NO2', 'SO2', 'O3',
     'Temperature', 'Humidity', 'WindSpeed',
-    'HospitalAdmissions',      # <-- New position (Index 9) - The 10th feature the model expects
-    'RespiratoryCases',        # <-- New position (Index 10) - Used for score calculation
-    'CardiovascularCases'      # <-- New position (Index 11) - Used for score calculation
+    'HospitalAdmissions'
 ]
 # The model specifically expects only the first 10 features for prediction.
 NUM_MODEL_FEATURES = 10 
@@ -208,16 +198,7 @@ def predict():
         # We use the new indices matching the reordered FEATURE_NAMES list
         aqi = features[0]
         pm25 = features[2]
-        admissions = features[9]        # HospitalAdmissions is now index 9
-        respiratory = features[10]       # RespiratoryCases is now index 10
-        cardiovascular = features[11]    # CardiovascularCases is now index 11
-        
-        # Weighted health impact calculation
-        aqi_component = min((aqi / 500) * 40, 40)
-        pm25_component = min((pm25 / 500) * 30, 30)
-        # Note: 'respiratory', 'cardiovascular', and 'admissions' are used here
-        health_component = min(((respiratory + cardiovascular + admissions) / 300) * 30, 30)
-        health_impact_score = round(aqi_component + pm25_component + health_component, 1)
+        admissions = features[9]        
         
         # Get class label and recommendations
         class_label = CLASS_LABELS.get(int(prediction), 'Unknown')
@@ -228,7 +209,6 @@ def predict():
             'success': True,
             'health_impact_class': int(prediction),
             'class_label': class_label,
-            'health_impact_score': health_impact_score,
             'confidence': round(confidence, 1),
             'recommendations': recommendations,
             'input_features': {name: features[i] for i, name in enumerate(FEATURE_NAMES)}
