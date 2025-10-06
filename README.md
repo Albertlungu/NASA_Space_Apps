@@ -1,4 +1,4 @@
-# 🌍 NASA TEMPO Air Quality Monitor
+# NASA TEMPO Air Quality Monitor
 
 Real-time air quality monitoring application using NASA TEMPO satellite data with Ruby backend and React TypeScript frontend.
 
@@ -24,36 +24,36 @@ Real-time air quality monitoring application using NASA TEMPO satellite data wit
 
 ---
 
-## ✨ Features
+## Features
 
 ### Real-Time Monitoring
-- 🌡️ **Live Air Quality Data** - PM2.5, NO2, O3, PM10 from 10,000+ stations
-- 🛰️ **NASA TEMPO Satellite** - Real-time satellite pollution measurements
-- 🌍 **30 World Cities** - Major cities across all continents
-- 🗺️ **Interactive Map** - Click anywhere to query air quality data
-- 🔄 **Auto-Refresh** - Updates every 15 minutes
+- **Live Air Quality Data** - PM2.5, NO2, O3, PM10 from 10,000+ stations
+- **NASA TEMPO Satellite** - Real-time satellite pollution measurements
+- **30 World Cities** - Major cities across all continents
+- **Interactive Map** - Click anywhere to query air quality data
+- **Auto-Refresh** - Updates every 15 minutes
 
 ### Analytics & Predictions
-- 📊 **Historical Trends** - 7-day and monthly patterns
-- 🔮 **24-Hour Forecast** - ML-based predictions with confidence intervals
-- 📈 **Data Visualization** - Interactive charts and graphs
-- 🎯 **Event Detection** - Identifies pollution spikes
+- **Historical Trends** - 7-day and monthly patterns
+- **24-Hour Forecast** - ML-based predictions with confidence intervals
+- **Data Visualization** - Interactive charts and graphs
+- **Event Detection** - Identifies pollution spikes
 
 ### Health & Safety
-- 💚 **Exposure Tracking** - Monitor your daily pollution exposure
-- 🏥 **Health Recommendations** - Personalized advice based on AQI
-- 🚨 **Alert System** - Real-time notifications for high pollution
-- 📚 **Educational Resources** - Learn about air quality and health
+- **Exposure Tracking** - Monitor your daily pollution exposure
+- **Health Recommendations** - Personalized advice based on AQI
+- **Alert System** - Real-time notifications for high pollution
+- **Educational Resources** - Learn about air quality and health
 
 ### User Experience
-- 📱 **Responsive Design** - Works on all devices
-- 🎨 **Modern UI** - Shadcn UI + Tailwind CSS
-- ⚡ **Fast Loading** - Optimized with caching (1-2 second load times)
-- 🌈 **Color-Coded AQI** - EPA standard color scale
+- **Responsive Design** - Works on all devices
+- **Modern UI** - Shadcn UI + Tailwind CSS
+- **Fast Loading** - Optimized with caching (1-2 second load times)
+- **Color-Coded AQI** - EPA standard color scale
 
 ---
 
-## 🛠️ Tech Stack
+## Tech Stack
 
 ### Backend
 - **Ruby** 3.4.6
@@ -80,7 +80,7 @@ Real-time air quality monitoring application using NASA TEMPO satellite data wit
 
 ---
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Prerequisites
 - Ruby 3.4.6+
