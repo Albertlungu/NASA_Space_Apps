@@ -1,11 +1,12 @@
-#!/usr/bin/env ruby
+﻿#!/usr/bin/env ruby
+require 'dotenv/load'
 require 'httparty'
 require 'sqlite3'
 require 'json'
 require 'time'
 
 # WAQI API token - replace with your actual token
-WAQI_TOKEN = ENV['VITE_AQI_TOKEN'] || 'your_token_here'
+WAQI_TOKEN = ENV['WAQI_TOKEN'] || 'ccf75bab3c56b19577485397ed8a71846504141a'
 
 # Cities to fetch data for
 CITIES = [
@@ -23,11 +24,11 @@ CITIES = [
 
 db = SQLite3::Database.new('db/development.sqlite3')
 
-puts "🌍 Fetching REAL air quality data from WAQI..."
+puts " Fetching REAL air quality data from WAQI..."
 puts "=" * 60
 
 CITIES.each do |city|
-  puts "\n📍 Fetching data for #{city[:name]}..."
+  puts "\n Fetching data for #{city[:name]}..."
   
   begin
     # Fetch current data from WAQI
@@ -50,71 +51,46 @@ CITIES.each do |city|
       actual_lat = station_coords ? station_coords[0] : city[:lat]
       actual_lon = station_coords ? station_coords[1] : city[:lon]
       
+      timestamp = Time.now.strftime('%Y-%m-%d %H:%M:%S')
+      
       # Insert PM2.5 reading if available
       if pm25
         db.execute(
-          "INSERT INTO air_quality_readings (pollutant, value, unit, latitude, longitude, location_name, city, country, aqi, measured_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-          'pm25',
-          pm25,
-          'µg/m³',
-          actual_lat,
-          actual_lon,
-          station_name,
-          city[:name],
-          'N/A',
-          aqi,
-          Time.now.strftime('%Y-%m-%d %H:%M:%S')
+          "INSERT INTO air_quality_readings (pollutant, value, unit, latitude, longitude, location_name, city, country, aqi, measured_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          ['pm25', pm25, 'ug/m3', actual_lat, actual_lon, station_name, city[:name], 'N/A', aqi, timestamp, timestamp, timestamp]
         )
-        puts "  ✓ PM2.5: #{pm25} µg/m³ (AQI: #{aqi})"
+        puts "   PM2.5: #{pm25} ug/m3 (AQI: #{aqi})"
       end
       
       # Insert NO2 reading if available
       if no2
         db.execute(
-          "INSERT INTO air_quality_readings (pollutant, value, unit, latitude, longitude, location_name, city, country, aqi, measured_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-          'no2',
-          no2,
-          'ppb',
-          actual_lat,
-          actual_lon,
-          station_name,
-          city[:name],
-          'N/A',
-          aqi,
-          Time.now.strftime('%Y-%m-%d %H:%M:%S')
+          "INSERT INTO air_quality_readings (pollutant, value, unit, latitude, longitude, location_name, city, country, aqi, measured_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          ['no2', no2, 'ppb', actual_lat, actual_lon, station_name, city[:name], 'N/A', aqi, timestamp, timestamp, timestamp]
         )
-        puts "  ✓ NO2: #{no2} ppb"
+        puts "   NO2: #{no2} ppb"
       end
       
       # Insert O3 reading if available
       if o3
         db.execute(
-          "INSERT INTO air_quality_readings (pollutant, value, unit, latitude, longitude, location_name, city, country, aqi, measured_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-          'o3',
-          o3,
-          'ppb',
-          actual_lat,
-          actual_lon,
-          station_name,
-          city[:name],
-          'N/A',
-          aqi,
-          Time.now.strftime('%Y-%m-%d %H:%M:%S')
+          "INSERT INTO air_quality_readings (pollutant, value, unit, latitude, longitude, location_name, city, country, aqi, measured_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          ['o3', o3, 'ppb', actual_lat, actual_lon, station_name, city[:name], 'N/A', aqi, timestamp, timestamp, timestamp]
         )
-        puts "  ✓ O3: #{o3} ppb"
+        puts "   O3: #{o3} ppb"
       end
       
-      puts "  📊 Station: #{station_name}"
+      puts "   Station: #{station_name}"
       
     else
-      puts "  ⚠️  No data available (#{data['data'] || data['message']})"
+      puts "    No data available (#{data['data'] || data['message']})"
     end
     
     # Rate limiting - don't hammer the API
     sleep(1)
     
   rescue => e
-    puts "  ❌ Error: #{e.message}"
+    puts "   Error: #{e.message}"
   end
 end
 
@@ -122,8 +98,8 @@ end
 count = db.execute("SELECT COUNT(*) FROM air_quality_readings")[0][0]
 
 puts "\n" + "=" * 60
-puts "✅ Done! Total readings in database: #{count}"
-puts "\n💡 Run this script hourly with a cron job to build historical data:"
+puts " Done! Total readings in database: #{count}"
+puts "\n Run this script hourly with a cron job to build historical data:"
 puts "   0 * * * * cd /path/to/backend && ruby fetch_real_data.rb"
 
 db.close
