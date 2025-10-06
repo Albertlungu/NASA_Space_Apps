@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useGeolocation } from '@/hooks/useGeolocation';
 import { getWAQIDataByCoords } from '@/lib/api';
+import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ScatterChart, Scatter } from 'recharts';
+import { Card } from '@/components/ui/card';
 
 interface Prediction {
   hours_ahead: number;
@@ -238,7 +240,160 @@ const PredictionsView = () => {
         </div>
       </div>
 
-      {/* 24-Hour Hourly Predictions */}
+      {/* AQI Trend Chart */}
+      <Card className="p-6 mb-6">
+        <h2 className="text-2xl font-bold mb-4">24-Hour AQI Forecast</h2>
+        <ResponsiveContainer width="100%" height={300}>
+          <LineChart data={hourly}>
+            <CartesianGrid strokeDasharray="3 3" />
+            <XAxis 
+              dataKey="hours_ahead" 
+              label={{ value: 'Hours Ahead', position: 'insideBottom', offset: -5 }}
+            />
+            <YAxis label={{ value: 'AQI', angle: -90, position: 'insideLeft' }} />
+            <Tooltip 
+              content={({ active, payload }) => {
+                if (active && payload && payload.length) {
+                  const data = payload[0].payload;
+                  return (
+                    <div className="bg-white p-3 border rounded shadow-lg">
+                      <p className="font-bold">{data.hours_ahead === 0 ? 'Now' : `+${data.hours_ahead}h`}</p>
+                      <p style={{ color: getAQIColor(data.predicted_aqi) }}>
+                        AQI: {data.predicted_aqi}
+                      </p>
+                      <p className="text-sm text-gray-600">
+                        {getAQILabel(data.predicted_aqi)}
+                      </p>
+                      <p className="text-sm">Confidence: {data.confidence}%</p>
+                    </div>
+                  );
+                }
+                return null;
+              }}
+            />
+            <Legend />
+            <Line 
+              type="monotone" 
+              dataKey="predicted_aqi" 
+              stroke="#3b82f6" 
+              strokeWidth={2}
+              dot={{ fill: '#3b82f6', r: 4 }}
+              name="Predicted AQI"
+            />
+          </LineChart>
+        </ResponsiveContainer>
+      </Card>
+
+      {/* PM2.5 vs Time Chart */}
+      <Card className="p-6 mb-6">
+        <h2 className="text-2xl font-bold mb-4">PM2.5 Concentration Over Time</h2>
+        <ResponsiveContainer width="100%" height={300}>
+          <BarChart data={hourly}>
+            <CartesianGrid strokeDasharray="3 3" />
+            <XAxis 
+              dataKey="hours_ahead" 
+              label={{ value: 'Hours Ahead', position: 'insideBottom', offset: -5 }}
+            />
+            <YAxis label={{ value: 'PM2.5 (µg/m³)', angle: -90, position: 'insideLeft' }} />
+            <Tooltip 
+              content={({ active, payload }) => {
+                if (active && payload && payload.length) {
+                  const data = payload[0].payload;
+                  return (
+                    <div className="bg-white p-3 border rounded shadow-lg">
+                      <p className="font-bold">{data.hours_ahead === 0 ? 'Now' : `+${data.hours_ahead}h`}</p>
+                      <p>PM2.5: {data.predicted_value.toFixed(1)} µg/m³</p>
+                      <p className="text-sm">AQI: {data.predicted_aqi}</p>
+                    </div>
+                  );
+                }
+                return null;
+              }}
+            />
+            <Legend />
+            <Bar 
+              dataKey="predicted_value" 
+              fill="#10b981"
+              name="PM2.5 Concentration"
+            />
+          </BarChart>
+        </ResponsiveContainer>
+      </Card>
+
+      {/* Confidence Level Chart */}
+      <Card className="p-6 mb-6">
+        <h2 className="text-2xl font-bold mb-4">Prediction Confidence Over Time</h2>
+        <ResponsiveContainer width="100%" height={250}>
+          <LineChart data={hourly}>
+            <CartesianGrid strokeDasharray="3 3" />
+            <XAxis 
+              dataKey="hours_ahead" 
+              label={{ value: 'Hours Ahead', position: 'insideBottom', offset: -5 }}
+            />
+            <YAxis 
+              domain={[0, 100]}
+              label={{ value: 'Confidence (%)', angle: -90, position: 'insideLeft' }}
+            />
+            <Tooltip />
+            <Legend />
+            <Line 
+              type="monotone" 
+              dataKey="confidence" 
+              stroke="#f59e0b" 
+              strokeWidth={2}
+              dot={{ fill: '#f59e0b', r: 3 }}
+              name="Confidence Level"
+            />
+          </LineChart>
+        </ResponsiveContainer>
+      </Card>
+
+      {/* AQI vs PM2.5 Correlation */}
+      <Card className="p-6 mb-6">
+        <h2 className="text-2xl font-bold mb-4">AQI vs PM2.5 Correlation</h2>
+        <ResponsiveContainer width="100%" height={300}>
+          <ScatterChart>
+            <CartesianGrid strokeDasharray="3 3" />
+            <XAxis 
+              dataKey="predicted_value" 
+              name="PM2.5"
+              label={{ value: 'PM2.5 (µg/m³)', position: 'insideBottom', offset: -5 }}
+            />
+            <YAxis 
+              dataKey="predicted_aqi" 
+              name="AQI"
+              label={{ value: 'AQI', angle: -90, position: 'insideLeft' }}
+            />
+            <Tooltip 
+              cursor={{ strokeDasharray: '3 3' }}
+              content={({ active, payload }) => {
+                if (active && payload && payload.length) {
+                  const data = payload[0].payload;
+                  return (
+                    <div className="bg-white p-3 border rounded shadow-lg">
+                      <p className="font-bold">{data.hours_ahead === 0 ? 'Current' : `+${data.hours_ahead}h`}</p>
+                      <p>PM2.5: {data.predicted_value.toFixed(1)} µg/m³</p>
+                      <p>AQI: {data.predicted_aqi}</p>
+                      <p className="text-sm" style={{ color: getAQIColor(data.predicted_aqi) }}>
+                        {getAQILabel(data.predicted_aqi)}
+                      </p>
+                    </div>
+                  );
+                }
+                return null;
+              }}
+            />
+            <Legend />
+            <Scatter 
+              name="Forecast Points" 
+              data={hourly} 
+              fill="#8b5cf6"
+            />
+          </ScatterChart>
+        </ResponsiveContainer>
+      </Card>
+
+      {/* 24-Hour Hourly Predictions Table */}
       <div style={{ 
         marginBottom: '30px',
         padding: '20px',
@@ -247,7 +402,7 @@ const PredictionsView = () => {
         boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
       }}>
         <h2 style={{ fontSize: '24px', fontWeight: 'bold', marginBottom: '15px' }}>
-          24-Hour Forecast
+          24-Hour Forecast Details
         </h2>
         <div style={{ overflowX: 'auto' }}>
           <table style={{ 
