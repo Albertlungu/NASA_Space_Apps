@@ -2,7 +2,7 @@
 
 ## Backend Debug Results
 
-### ✅ What's Working
+### What's Working
 
 1. **Database**: 100 air quality readings, 1 user, 1 alert
 2. **Historical Data**: 
@@ -12,7 +12,7 @@
 3. **Alerts**: 1 active alert for high PM2.5
 4. **API Endpoints**: All responding correctly
 
-### ⚠️ Known Issues
+### Known Issues
 
 1. **Current Air Quality Readings**: Returns empty because:
    - Sample data doesn't have matching coordinates
